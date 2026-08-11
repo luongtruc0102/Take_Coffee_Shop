@@ -1,33 +1,41 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
+// Cấu hình Prisma Client để NestJS có thể thao tác với database
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
-  moduleFormat = "cjs"
 }
 
+// Project sử dụng PostgreSQL
 datasource db {
   provider = "postgresql"
 }
 
+// Vai trò của người dùng trong hệ thống
+// Ví dụ: ADMIN, STAFF, USER
 model Role {
   id        Int      @id @default(autoincrement())
   name      String   @unique
+
+  // Một Role có thể được gán cho nhiều User
   users     User[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+// Tài khoản người dùng trong hệ thống
 model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
+
+  // Mật khẩu sẽ được hash trước khi lưu vào database
   password  String
+
   fullName  String?
+
+  // Foreign Key liên kết User với Role
   roleId    Int
   role      Role     @relation(fields: [roleId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

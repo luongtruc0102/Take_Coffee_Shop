@@ -1,0 +1,19 @@
+{
+    "files.exclude": {
+      "**/.git": true,
+      "**/node_modules": true,
+      "**/.next": true,
+      "**/dist": true,
+      "**/generated": true,
+      "**/.agents": true,
+      "**/.claude": true,
+      "**/.windsurf": true,
+      "**/coverage": true,
+      "**/skills-lock.json": true,
+  
+      "**/package-lock.json": true,
+      "**/tsconfig.build.json": true,
+      "**/eslint.config.mjs": true,
+      "**/.prettierrc": true
+    }
+  }

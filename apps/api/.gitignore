@@ -1,3 +1,5 @@
+#Bảo vệ Git không track/commit file này
+
 # compiled output
 /dist
 /node_modules

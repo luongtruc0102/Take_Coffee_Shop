@@ -45,3 +45,65 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// Danh mục sản phẩm
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+
+  // Một danh mục có nhiều sản phẩm
+  products    Product[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Sản phẩm trong menu
+model Product {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  price       Decimal   @db.Decimal(10, 2)
+  imageUrl    String?
+  isActive    Boolean   @default(true)
+
+  // Mỗi sản phẩm thuộc một danh mục
+  categoryId  Int
+  category    Category  @relation(fields: [categoryId], references: [id])
+
+  // Một sản phẩm có thể dùng nhiều topping
+  toppings    ProductTopping[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([categoryId])
+}
+
+// Topping có thể thêm vào sản phẩm
+model Topping {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  price       Decimal   @db.Decimal(10, 2)
+  isActive    Boolean   @default(true)
+
+  // Một topping có thể áp dụng cho nhiều sản phẩm
+  products    ProductTopping[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Bảng trung gian cho quan hệ nhiều-nhiều Product và Topping
+model ProductTopping {
+  productId   Int
+  toppingId   Int
+
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  topping     Topping   @relation(fields: [toppingId], references: [id], onDelete: Cascade)
+
+  @@id([productId, toppingId])
+  @@index([toppingId])
+}

@@ -7,6 +7,9 @@ import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { CategoriesModule } from './categories/categories.module';
+import { ProductsModule } from './products/products.module';
+import { ToppingsModule } from './toppings/toppings.module';
 
 @Module({
   imports: [
@@ -15,26 +18,33 @@ import { RolesGuard } from './common/guards/roles.guard';
       isGlobal: true,
     }),
 
-    // Kết nối và cung cấp PrismaService cho toàn hệ thống
+    // Kết nối database và cung cấp PrismaService cho toàn hệ thống
     PrismaModule,
 
-    // Module kiểm tra trạng thái API + Database
+    // Module kiểm tra trạng thái API và kết nối database
     HealthModule,
 
+    // Module quản lý tài khoản người dùng
     UsersModule,
 
     // Module xử lý đăng ký, đăng nhập và JWT
     AuthModule,
+
+    // Các module quản lý menu của cửa hàng
+    CategoriesModule,
+    ProductsModule,
+    ToppingsModule,
   ],
 
   providers: [
-    // Kiểm tra Access Token cho toàn bộ API
+    // Global Guard: mọi API mặc định phải có Access Token,
+    // trừ các API được đánh dấu bằng @Public()
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
 
-    // Kiểm tra quyền truy cập với các API có @Roles(...)
+    // Global Guard: kiểm tra quyền truy cập với các API có @Roles(...)
     {
       provide: APP_GUARD,
       useClass: RolesGuard,

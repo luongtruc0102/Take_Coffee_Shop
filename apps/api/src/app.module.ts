@@ -10,6 +10,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
 import { ToppingsModule } from './toppings/toppings.module';
+import { ProductVariantsModule } from './product-variants/product-variants.module';
 
 @Module({
   imports: [
@@ -34,6 +35,8 @@ import { ToppingsModule } from './toppings/toppings.module';
     CategoriesModule,
     ProductsModule,
     ToppingsModule,
+
+    ProductVariantsModule,
   ],
 
   providers: [

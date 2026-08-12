@@ -52,7 +52,7 @@ export class ProductsService {
       },
       include: {
         category: true,
-
+  
         // Chỉ trả các topping đang hoạt động
         toppings: {
           where: {
@@ -62,6 +62,16 @@ export class ProductsService {
           },
           include: {
             topping: true,
+          },
+        },
+  
+        // Chỉ trả các size/variant đang hoạt động
+        variants: {
+          where: {
+            isActive: true,
+          },
+          orderBy: {
+            price: 'asc',
           },
         },
       },
@@ -83,7 +93,7 @@ export class ProductsService {
       },
       include: {
         category: true,
-
+  
         // Không hiển thị topping đã bị khóa
         toppings: {
           where: {
@@ -95,13 +105,23 @@ export class ProductsService {
             topping: true,
           },
         },
+  
+        // Không hiển thị variant đã bị khóa
+        variants: {
+          where: {
+            isActive: true,
+          },
+          orderBy: {
+            price: 'asc',
+          },
+        },
       },
     });
-
+  
     if (!product) {
       throw new NotFoundException('Không tìm thấy sản phẩm');
     }
-
+  
     return product;
   }
 

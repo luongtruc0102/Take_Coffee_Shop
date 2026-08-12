@@ -40,7 +40,7 @@ model User {
   role      Role     @relation(fields: [roleId], references: [id])
 
   // Trạng thái tài khoản: true = hoạt động, false = bị khóa
-  isActive Boolean @default(true)
+  isActive  Boolean  @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -76,10 +76,40 @@ model Product {
   // Một sản phẩm có thể dùng nhiều topping
   toppings    ProductTopping[]
 
+  // Một sản phẩm có thể có nhiều size / biến thể
+  variants    ProductVariant[]
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([categoryId])
+}
+
+// Biến thể sản phẩm theo size
+model ProductVariant {
+  id        Int      @id @default(autoincrement())
+
+  // Ví dụ: S, M, L
+  size      String
+
+  // Giá riêng của từng size
+  price     Decimal  @db.Decimal(10, 2)
+
+  // Trạng thái variant: true = hoạt động, false = bị khóa
+  isActive  Boolean  @default(true)
+
+  // Mỗi variant thuộc về một sản phẩm
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Một sản phẩm không được có 2 variant cùng size
+  @@unique([productId, size])
+
+  // Tăng tốc truy vấn theo productId
+  @@index([productId])
 }
 
 // Topping có thể thêm vào sản phẩm
@@ -98,12 +128,14 @@ model Topping {
 
 // Bảng trung gian cho quan hệ nhiều-nhiều Product và Topping
 model ProductTopping {
-  productId   Int
-  toppingId   Int
+  productId Int
+  toppingId Int
 
-  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  topping     Topping   @relation(fields: [toppingId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  topping Topping @relation(fields: [toppingId], references: [id], onDelete: Cascade)
 
+  // Một cặp Product + Topping chỉ được tồn tại một lần
   @@id([productId, toppingId])
+
   @@index([toppingId])
 }

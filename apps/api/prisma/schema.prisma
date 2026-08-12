@@ -2,6 +2,9 @@
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
+
+  // NestJS hiện tại của project đang chạy theo CommonJS
+  moduleFormat = "cjs"
 }
 
 // Project sử dụng PostgreSQL
@@ -35,6 +38,9 @@ model User {
   // Foreign Key liên kết User với Role
   roleId    Int
   role      Role     @relation(fields: [roleId], references: [id])
+
+  // Trạng thái tài khoản: true = hoạt động, false = bị khóa
+  isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -42,6 +42,9 @@ model User {
   // Trạng thái tài khoản: true = hoạt động, false = bị khóa
   isActive  Boolean  @default(true)
 
+  // Mỗi user có tối đa một giỏ hàng
+  cart      Cart?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -79,6 +82,9 @@ model Product {
   // Một sản phẩm có thể có nhiều size / biến thể
   variants    ProductVariant[]
 
+  // Các món trong giỏ hàng đang tham chiếu tới sản phẩm này
+  cartItems   CartItem[]
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -102,6 +108,9 @@ model ProductVariant {
   productId Int
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  // Các CartItem đang sử dụng size này
+  cartItems CartItem[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -122,6 +131,9 @@ model Topping {
   // Một topping có thể áp dụng cho nhiều sản phẩm
   products    ProductTopping[]
 
+  // Các CartItem đang chọn topping này
+  cartItems   CartItemTopping[]
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -136,6 +148,65 @@ model ProductTopping {
 
   // Một cặp Product + Topping chỉ được tồn tại một lần
   @@id([productId, toppingId])
+
+  @@index([toppingId])
+}
+
+// Giỏ hàng của người dùng
+model Cart {
+  id     Int @id @default(autoincrement())
+
+  // Mỗi user chỉ có một giỏ hàng
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Các món hiện có trong giỏ hàng
+  items  CartItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Một món đã được thêm vào giỏ hàng
+model CartItem {
+  id Int @id @default(autoincrement())
+
+  // CartItem thuộc về một giỏ hàng
+  cartId Int
+  cart   Cart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  // Sản phẩm được chọn
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+
+  // Size / variant được chọn
+  variantId Int
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+
+  // Số lượng sản phẩm
+  quantity Int @default(1)
+
+  // Các topping được chọn cho CartItem này
+  toppings CartItemTopping[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cartId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+// Bảng trung gian lưu topping được chọn cho từng CartItem
+model CartItemTopping {
+  cartItemId Int
+  toppingId  Int
+
+  cartItem CartItem @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
+  topping  Topping  @relation(fields: [toppingId], references: [id])
+
+  // Một topping chỉ được chọn một lần trong cùng một CartItem
+  @@id([cartItemId, toppingId])
 
   @@index([toppingId])
 }

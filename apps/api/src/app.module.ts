@@ -11,6 +11,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
 import { ToppingsModule } from './toppings/toppings.module';
 import { ProductVariantsModule } from './product-variants/product-variants.module';
+import { CartModule } from './cart/cart.module';
 
 @Module({
   imports: [
@@ -37,6 +38,9 @@ import { ProductVariantsModule } from './product-variants/product-variants.modul
     ToppingsModule,
 
     ProductVariantsModule,
+
+    // Module xử lý giỏ hàng của người dùng
+    CartModule,
   ],
 
   providers: [

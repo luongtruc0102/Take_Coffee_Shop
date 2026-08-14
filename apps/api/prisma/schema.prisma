@@ -241,7 +241,13 @@ model Order {
   userId Int
   user   User @relation(fields: [userId], references: [id])
 
-  // Tổng tiền được chốt tại thời điểm đặt hàng
+  // Tổng tiền trước khi áp dụng voucher
+  subtotal Decimal @default(0) @db.Decimal(10, 2)
+
+  // Số tiền được giảm
+  discountAmount Decimal @default(0) @db.Decimal(10, 2)
+
+  // Tổng tiền cuối cùng khách phải thanh toán
   totalPrice Decimal @db.Decimal(10, 2)
 
   // Thông tin nhận hàng được lưu snapshot theo từng đơn
@@ -254,11 +260,22 @@ model Order {
 
   items OrderItem[]
 
+  // Voucher đã áp dụng cho đơn hàng
+  voucherId Int?
+  voucher   Voucher? @relation(fields: [voucherId], references: [id])
+
+  // Snapshot mã voucher tại thời điểm checkout
+  voucherCode String?
+
+  // Thông tin thanh toán của đơn hàng
+  payment Payment?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([status])
+  @@index([voucherId])
 }
 
 // Một sản phẩm trong đơn hàng
@@ -316,4 +333,93 @@ model OrderItemTopping {
 
   @@index([orderItemId])
   @@index([toppingId])
+}
+
+// Kiểu giảm giá của voucher
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+// Mã giảm giá
+model Voucher {
+  id Int @id @default(autoincrement())
+
+  // Mã khách nhập, ví dụ: SALE20
+  code String @unique
+
+  description String?
+
+  // Kiểu giảm giá: phần trăm hoặc số tiền cố định
+  discountType DiscountType
+
+  // Giá trị giảm: 20 nghĩa là 20% hoặc 20.000 tùy discountType
+  discountValue Decimal @db.Decimal(10, 2)
+
+  // Giá trị đơn hàng tối thiểu để được áp dụng voucher
+  minOrderValue Decimal? @db.Decimal(10, 2)
+
+  // Số tiền giảm tối đa, thường dùng cho voucher phần trăm
+  maxDiscount Decimal? @db.Decimal(10, 2)
+
+  // Giới hạn tổng số lần voucher được sử dụng
+  usageLimit Int?
+
+  // Số lượt đã sử dụng
+  usedCount Int @default(0)
+
+  // Thời gian hiệu lực
+  startAt DateTime
+  endAt   DateTime
+
+  // ADMIN có thể bật/tắt voucher
+  isActive Boolean @default(true)
+
+  // Các đơn hàng đã áp dụng voucher
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Phương thức thanh toán
+enum PaymentMethod {
+  COD
+  BANK_TRANSFER
+}
+
+// Trạng thái thanh toán
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+// Thông tin thanh toán của đơn hàng
+model Payment {
+  id Int @id @default(autoincrement())
+
+  // Mỗi Order chỉ có tối đa một Payment
+  orderId Int   @unique
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  method PaymentMethod
+
+  status PaymentStatus @default(PENDING)
+
+  // Snapshot số tiền cần thanh toán
+  amount Decimal @db.Decimal(10, 2)
+
+  // Mã giao dịch từ ngân hàng/cổng thanh toán nếu có
+  transactionCode String?
+
+  // Thời điểm thanh toán thành công
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([method])
 }

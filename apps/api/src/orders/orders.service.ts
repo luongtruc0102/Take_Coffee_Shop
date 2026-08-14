@@ -5,13 +5,17 @@ import {
   } from '@nestjs/common';
   import { PrismaService } from '../prisma/prisma.service';
   import { CheckoutDto } from './dto/checkout.dto';
+  import { VouchersService } from '../vouchers/vouchers.service';
   
   @Injectable()
   export class OrdersService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+      private readonly prisma: PrismaService,
+      private readonly vouchersService: VouchersService,
+    ) {}
   
     async checkout(userId: number, checkoutDto: CheckoutDto) {
-      // Lấy giỏ hàng hiện tại cùng toàn bộ dữ liệu cần để tính giá
+      // Lấy giỏ hàng cùng toàn bộ dữ liệu cần để tính giá
       const cart = await this.prisma.cart.findUnique({
         where: {
           userId,
@@ -34,49 +38,49 @@ import {
           },
         },
       });
-  
+    
       if (!cart || cart.items.length === 0) {
         throw new BadRequestException('Giỏ hàng đang trống');
       }
-  
-      // Kiểm tra lại dữ liệu trước khi tạo đơn
+    
+      // Kiểm tra lại sản phẩm trước khi checkout
       for (const item of cart.items) {
         if (!item.product.isActive || !item.product.category.isActive) {
           throw new BadRequestException(
             `Sản phẩm "${item.product.name}" hiện không còn khả dụng`,
           );
         }
-  
+    
         if (!item.variant.isActive) {
           throw new BadRequestException(
             `Size "${item.variant.size}" của sản phẩm "${item.product.name}" hiện không còn khả dụng`,
           );
         }
-  
+    
         const invalidTopping = item.toppings.find(
           (itemTopping) => !itemTopping.topping.isActive,
         );
-  
+    
         if (invalidTopping) {
           throw new BadRequestException(
             `Topping "${invalidTopping.topping.name}" hiện không còn khả dụng`,
           );
         }
       }
-  
-      // Tính lại toàn bộ giá từ database tại thời điểm checkout
+    
+      // Tính lại giá từ database, không lấy giá từ client
       const calculatedItems = cart.items.map((item) => {
         const variantPrice = Number(item.variant.price);
-  
+    
         const toppingTotal = item.toppings.reduce(
           (total, itemTopping) =>
             total + Number(itemTopping.topping.price),
           0,
         );
-  
+    
         const unitPrice = variantPrice + toppingTotal;
         const lineTotal = unitPrice * item.quantity;
-  
+    
         return {
           item,
           variantPrice,
@@ -84,42 +88,70 @@ import {
           lineTotal,
         };
       });
-  
-      const totalPrice = calculatedItems.reduce(
+    
+      // Tổng tiền trước khi áp dụng voucher
+      const subtotal = calculatedItems.reduce(
         (total, current) => total + current.lineTotal,
         0,
       );
-  
-      // Transaction đảm bảo tạo Order và xóa Cart cùng thành công hoặc cùng rollback
+    
+      let discountAmount = 0;
+      let voucherId: number | undefined;
+      let voucherCode: string | undefined;
+    
+      if (checkoutDto.voucherCode) {
+        // Backend tự kiểm tra hạn dùng, min order, usage limit...
+        const voucherResult =
+          await this.vouchersService.validateForCheckout(
+            checkoutDto.voucherCode,
+            subtotal,
+          );
+    
+        voucherId = voucherResult.voucher.id;
+        voucherCode = voucherResult.voucher.code;
+        discountAmount = voucherResult.discountAmount;
+      }
+    
+      // Số tiền cuối cùng khách phải trả
+      const totalPrice = subtotal - discountAmount;
+    
+      // Tạo Order + snapshot + tăng lượt voucher + xóa Cart trong cùng transaction
       return this.prisma.$transaction(async (tx) => {
         const order = await tx.order.create({
           data: {
             userId,
+    
             receiverName: checkoutDto.receiverName,
             receiverPhone: checkoutDto.receiverPhone,
             deliveryAddress: checkoutDto.deliveryAddress,
             note: checkoutDto.note,
+    
+            subtotal,
+            discountAmount,
             totalPrice,
-  
+    
+            voucherId,
+            voucherCode,
+    
             items: {
               create: calculatedItems.map(
                 ({ item, variantPrice, unitPrice, lineTotal }) => ({
                   productId: item.productId,
                   variantId: item.variantId,
-  
-                  // Snapshot thông tin sản phẩm tại thời điểm đặt hàng
+    
+                  // Snapshot thông tin sản phẩm tại thời điểm đặt
                   productName: item.product.name,
                   size: item.variant.size,
                   variantPrice,
                   quantity: item.quantity,
                   unitPrice,
                   lineTotal,
-  
+    
                   toppings: {
                     create: item.toppings.map((itemTopping) => ({
                       toppingId: itemTopping.toppingId,
-  
-                      // Snapshot topping để lịch sử đơn không bị đổi theo dữ liệu hiện tại
+    
+                      // Snapshot topping để lịch sử không đổi theo giá hiện tại
                       toppingName: itemTopping.topping.name,
                       toppingPrice: itemTopping.topping.price,
                     })),
@@ -128,7 +160,9 @@ import {
               ),
             },
           },
+    
           include: {
+            voucher: true,
             items: {
               include: {
                 toppings: true,
@@ -136,14 +170,28 @@ import {
             },
           },
         });
-  
+    
+        if (voucherId !== undefined) {
+          // Chỉ tăng lượt sử dụng khi Order thực sự được tạo thành công
+          await tx.voucher.update({
+            where: {
+              id: voucherId,
+            },
+            data: {
+              usedCount: {
+                increment: 1,
+              },
+            },
+          });
+        }
+    
         // Checkout thành công thì làm trống giỏ hàng
         await tx.cartItem.deleteMany({
           where: {
             cartId: cart.id,
           },
         });
-  
+    
         return order;
       });
     }

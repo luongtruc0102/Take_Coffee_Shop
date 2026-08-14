@@ -13,6 +13,8 @@ import { ToppingsModule } from './toppings/toppings.module';
 import { ProductVariantsModule } from './product-variants/product-variants.module';
 import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
+import { VouchersModule } from './vouchers/vouchers.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -45,6 +47,12 @@ import { OrdersModule } from './orders/orders.module';
 
     // Module xử lý checkout và đơn hàng
     OrdersModule,
+
+    // Module quản lý mã giảm giá
+    VouchersModule,
+
+    // Module xử lý thanh toán đơn hàng
+    PaymentsModule,
   ],
 
   providers: [

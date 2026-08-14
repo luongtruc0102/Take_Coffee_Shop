@@ -15,6 +15,7 @@ import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
 import { VouchersModule } from './vouchers/vouchers.module';
 import { PaymentsModule } from './payments/payments.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -53,6 +54,9 @@ import { PaymentsModule } from './payments/payments.module';
 
     // Module xử lý thanh toán đơn hàng
     PaymentsModule,
+
+    // Module thống kê cho ADMIN và STAFF
+    DashboardModule,
   ],
 
   providers: [

@@ -1,33 +1,38 @@
 import {
-    ConflictException,
-    Injectable,
-    NotFoundException,
-  } from '@nestjs/common';
-  import { PrismaService } from '../prisma/prisma.service';
-  import { CreateProductVariantDto } from './dto/create-product-variant.dto';
-  import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
-  
-  @Injectable()
-  export class ProductVariantsService {
-    constructor(private readonly prisma: PrismaService) {}
-  
-    async create(productId: number, createDto: CreateProductVariantDto) {
-      // Chỉ cho tạo variant cho sản phẩm đang hoạt động
-      const product = await this.prisma.product.findFirst({
-        where: {
-          id: productId,
-          isActive: true,
-        },
-      });
-  
-      if (!product) {
-        throw new NotFoundException(
-          'Không tìm thấy sản phẩm hoặc sản phẩm đã bị khóa',
-        );
-      }
-  
-      // Ngăn một sản phẩm có 2 variant cùng size
-      const existingVariant = await this.prisma.productVariant.findUnique({
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateProductVariantDto } from './dto/create-product-variant.dto';
+import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
+
+@Injectable()
+export class ProductVariantsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  // Tạo variant mới cho sản phẩm
+  async create(
+    productId: number,
+    createDto: CreateProductVariantDto,
+  ) {
+    // Chỉ cho tạo variant nếu sản phẩm đang hoạt động
+    const product = await this.prisma.product.findFirst({
+      where: {
+        id: productId,
+        isActive: true,
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException(
+        'Không tìm thấy sản phẩm hoặc sản phẩm đã bị khóa',
+      );
+    }
+
+    // Không cho một sản phẩm có nhiều variant cùng size
+    const existingVariant =
+      await this.prisma.productVariant.findUnique({
         where: {
           productId_size: {
             productId,
@@ -35,48 +40,48 @@ import {
           },
         },
       });
-  
-      if (existingVariant) {
-        throw new ConflictException(
-          'Size này đã tồn tại trong sản phẩm',
-        );
-      }
-  
-      // Tạo variant theo size cho sản phẩm
-      return this.prisma.productVariant.create({
-        data: {
-          productId,
-          size: createDto.size,
-          price: createDto.price,
-        },
-        include: {
-          product: true,
-        },
-      });
+
+    if (existingVariant) {
+      throw new ConflictException(
+        'Size này đã tồn tại trong sản phẩm',
+      );
     }
-  
-    async findByProduct(productId: number) {
-      // API public chỉ trả variant đang hoạt động
-      return this.prisma.productVariant.findMany({
-        where: {
-          productId,
+
+    return this.prisma.productVariant.create({
+      data: {
+        productId,
+        size: createDto.size,
+        price: createDto.price,
+      },
+      include: {
+        product: true,
+      },
+    });
+  }
+
+  // API public chỉ trả variant đang hoạt động
+  async findByProduct(productId: number) {
+    return this.prisma.productVariant.findMany({
+      where: {
+        productId,
+        isActive: true,
+        product: {
           isActive: true,
-          product: {
+          category: {
             isActive: true,
-            category: {
-              isActive: true,
-            },
           },
         },
-        orderBy: {
-          price: 'asc',
-        },
-      });
-    }
-  
-    async findOne(id: number) {
-      // API public chỉ cho xem variant đang hoạt động
-      const variant = await this.prisma.productVariant.findFirst({
+      },
+      orderBy: {
+        price: 'asc',
+      },
+    });
+  }
+
+  // Lấy chi tiết một variant đang hoạt động
+  async findOne(id: number) {
+    const variant =
+      await this.prisma.productVariant.findFirst({
         where: {
           id,
           isActive: true,
@@ -95,33 +100,45 @@ import {
           },
         },
       });
-  
-      if (!variant) {
-        throw new NotFoundException('Không tìm thấy variant');
-      }
-  
-      return variant;
+
+    if (!variant) {
+      throw new NotFoundException(
+        'Không tìm thấy variant',
+      );
     }
-  
-    // Dùng cho ADMIN để vẫn tìm được variant đã bị khóa
-    private async findVariantById(id: number) {
-      const variant = await this.prisma.productVariant.findUnique({
-        where: { id },
+
+    return variant;
+  }
+
+  // Dùng nội bộ cho ADMIN để vẫn tìm được variant đã bị khóa
+  private async findVariantById(id: number) {
+    const variant =
+      await this.prisma.productVariant.findUnique({
+        where: {
+          id,
+        },
       });
-  
-      if (!variant) {
-        throw new NotFoundException('Không tìm thấy variant');
-      }
-  
-      return variant;
+
+    if (!variant) {
+      throw new NotFoundException(
+        'Không tìm thấy variant',
+      );
     }
-  
-    async update(id: number, updateDto: UpdateProductVariantDto) {
-      const variant = await this.findVariantById(id);
-  
-      if (updateDto.size !== undefined) {
-        // Không cho đổi sang size đã tồn tại trong cùng sản phẩm
-        const existingVariant = await this.prisma.productVariant.findFirst({
+
+    return variant;
+  }
+
+  // Cập nhật thông tin variant
+  async update(
+    id: number,
+    updateDto: UpdateProductVariantDto,
+  ) {
+    const variant = await this.findVariantById(id);
+
+    if (updateDto.size !== undefined) {
+      // Không cho đổi sang size đã tồn tại trong cùng sản phẩm
+      const existingVariant =
+        await this.prisma.productVariant.findFirst({
           where: {
             productId: variant.productId,
             size: updateDto.size,
@@ -130,30 +147,37 @@ import {
             },
           },
         });
-  
-        if (existingVariant) {
-          throw new ConflictException(
-            'Size này đã tồn tại trong sản phẩm',
-          );
-        }
+
+      if (existingVariant) {
+        throw new ConflictException(
+          'Size này đã tồn tại trong sản phẩm',
+        );
       }
-  
-      return this.prisma.productVariant.update({
-        where: { id },
-        data: updateDto,
-      });
     }
-  
-    async updateStatus(id: number, isActive: boolean) {
-      // ADMIN vẫn có thể mở lại variant đã bị khóa
-      await this.findVariantById(id);
-  
-      // Soft lock: chỉ đổi trạng thái, không xóa variant khỏi database
-      return this.prisma.productVariant.update({
-        where: { id },
-        data: {
-          isActive,
-        },
-      });
-    }
+
+    return this.prisma.productVariant.update({
+      where: {
+        id,
+      },
+      data: updateDto,
+    });
   }
+
+  // Soft lock hoặc mở lại variant
+  async updateStatus(
+    id: number,
+    isActive: boolean,
+  ) {
+    // ADMIN vẫn phải tìm được variant kể cả khi đang bị khóa
+    await this.findVariantById(id);
+
+    return this.prisma.productVariant.update({
+      where: {
+        id,
+      },
+      data: {
+        isActive,
+      },
+    });
+  }
+}

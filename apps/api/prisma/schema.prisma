@@ -45,6 +45,9 @@ model User {
   // Mỗi user có tối đa một giỏ hàng
   cart      Cart?
 
+  // Các đơn hàng mà user đã đặt
+  orders Order[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -85,6 +88,9 @@ model Product {
   // Các món trong giỏ hàng đang tham chiếu tới sản phẩm này
   cartItems   CartItem[]
 
+  // Các OrderItem từng mua sản phẩm này
+  orderItems OrderItem[]
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -111,6 +117,9 @@ model ProductVariant {
   // Các CartItem đang sử dụng size này
   cartItems CartItem[]
 
+  // Các OrderItem từng sử dụng variant này
+  orderItems OrderItem[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -133,6 +142,9 @@ model Topping {
 
   // Các CartItem đang chọn topping này
   cartItems   CartItemTopping[]
+
+  // Các topping đã được lưu trong lịch sử đơn hàng
+  orderItems OrderItemTopping[]
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -208,5 +220,100 @@ model CartItemTopping {
   // Một topping chỉ được chọn một lần trong cùng một CartItem
   @@id([cartItemId, toppingId])
 
+  @@index([toppingId])
+}
+
+// Trạng thái xử lý đơn hàng
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  DELIVERING
+  COMPLETED
+  CANCELLED
+}
+
+// Đơn hàng của người dùng
+model Order {
+  id Int @id @default(autoincrement())
+
+  // User đã đặt đơn
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  // Tổng tiền được chốt tại thời điểm đặt hàng
+  totalPrice Decimal @db.Decimal(10, 2)
+
+  // Thông tin nhận hàng được lưu snapshot theo từng đơn
+  receiverName    String
+  receiverPhone   String
+  deliveryAddress String
+  note            String?
+
+  status OrderStatus @default(PENDING)
+
+  items OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+// Một sản phẩm trong đơn hàng
+model OrderItem {
+  id Int @id @default(autoincrement())
+
+  orderId Int
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Giữ relation để tra cứu sản phẩm gốc
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+
+  variantId Int
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+
+  // Snapshot thông tin tại thời điểm đặt hàng
+  productName String
+  size        String
+
+  // Giá variant tại thời điểm checkout
+  variantPrice Decimal @db.Decimal(10, 2)
+
+  quantity Int
+
+  // Giá 1 món = variant + toàn bộ topping
+  unitPrice Decimal @db.Decimal(10, 2)
+
+  // Tổng tiền của dòng = unitPrice × quantity
+  lineTotal Decimal @db.Decimal(10, 2)
+
+  toppings OrderItemTopping[]
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+// Snapshot topping trong từng OrderItem
+model OrderItemTopping {
+  id Int @id @default(autoincrement())
+
+  orderItemId Int
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  // Giữ toppingId để truy vết dữ liệu gốc
+  toppingId Int
+  topping   Topping @relation(fields: [toppingId], references: [id])
+
+  // Snapshot tên và giá topping tại thời điểm đặt
+  toppingName  String
+  toppingPrice Decimal @db.Decimal(10, 2)
+
+  @@index([orderItemId])
   @@index([toppingId])
 }

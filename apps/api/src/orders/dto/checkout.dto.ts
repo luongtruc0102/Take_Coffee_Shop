@@ -1,6 +1,8 @@
 import {
+  IsInt,
   IsOptional,
   IsString,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -26,4 +28,10 @@ export class CheckoutDto {
   @IsOptional()
   @IsString()
   voucherCode?: string;
+
+  // Số điểm khách muốn dùng khi thanh toán
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  loyaltyPointsToUse?: number;
 }

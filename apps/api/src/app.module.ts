@@ -16,6 +16,7 @@ import { OrdersModule } from './orders/orders.module';
 import { VouchersModule } from './vouchers/vouchers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -57,6 +58,9 @@ import { DashboardModule } from './dashboard/dashboard.module';
 
     // Module thống kê cho ADMIN và STAFF
     DashboardModule,
+
+    // Module uploads hình ảnh
+    UploadsModule,
   ],
 
   providers: [

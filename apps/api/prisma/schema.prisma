@@ -34,6 +34,9 @@ model User {
   password  String
 
   fullName  String?
+  phone    String? @unique
+  avatarUrl     String?
+  address       String?
 
   // Foreign Key liên kết User với Role
   roleId    Int
@@ -41,6 +44,9 @@ model User {
 
   // Trạng thái tài khoản: true = hoạt động, false = bị khóa
   isActive  Boolean  @default(true)
+
+  // Điểm khách hàng tích lũy từ các đơn hoàn tất
+  loyaltyPoints Int @default(0)
 
   // Mỗi user có tối đa một giỏ hàng
   cart      Cart?
@@ -276,6 +282,18 @@ model Order {
   @@index([userId])
   @@index([status])
   @@index([voucherId])
+
+  // Số điểm khách đã dùng cho đơn hàng
+  loyaltyPointsUsed Int @default(0)
+
+  // Số tiền được giảm từ điểm
+  loyaltyDiscountAmount Decimal @default(0) @db.Decimal(10, 2)
+
+  // Số điểm đã cộng sau khi đơn hoàn tất
+  loyaltyPointsEarned Int @default(0)
+
+  // Dùng để chống cộng điểm nhiều lần
+  loyaltyPointsGrantedAt DateTime?
 }
 
 // Một sản phẩm trong đơn hàng

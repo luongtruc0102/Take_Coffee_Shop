@@ -109,18 +109,128 @@ export class OrdersService {
         await this.vouchersService.validateForCheckout(
           checkoutDto.voucherCode,
           subtotal,
+          userId,
         );
 
-      voucherId = voucherResult.voucher.id;
-      voucherCode = voucherResult.voucher.code;
-      discountAmount = voucherResult.discountAmount;
+        voucherId =
+          voucherResult.voucher?.id;
+      
+        voucherCode =
+          voucherResult.voucherCode;
+        
+        discountAmount =
+          voucherResult.discountAmount;
+    }
+
+    let loyaltyPointsUsed = 0;
+    let loyaltyDiscountAmount = 0;
+
+    const requestedPoints =
+      checkoutDto.loyaltyPointsToUse ?? 0;
+
+    if (requestedPoints > 0) {
+      const user =
+        await this.prisma.user.findUnique({
+          where: {
+            id: userId,
+          },
+          include: {
+            role: true,
+          },
+        });
+
+      if (!user) {
+        throw new NotFoundException(
+          'Không tìm thấy người dùng',
+        );
+      }
+
+      // Chỉ khách hàng USER được sử dụng điểm tích lũy
+      if (user.role.name !== 'USER') {
+        throw new BadRequestException(
+          'Chỉ khách hàng mới được sử dụng điểm tích lũy',
+        );
+      }
+
+      // Phải đạt mốc 5.000 điểm mới mở khóa chức năng đổi điểm
+      if (user.loyaltyPoints < 5000) {
+        throw new BadRequestException(
+          'Bạn cần đạt ít nhất 5.000 điểm để sử dụng điểm tích lũy',
+        );
+      }
+
+      if (
+        requestedPoints % 1000 !==
+        0
+      ) {
+        throw new BadRequestException(
+          'Số điểm sử dụng phải là bội số của 1.000',
+        );
+      }
+
+      if (
+        requestedPoints >
+        user.loyaltyPoints
+      ) {
+        throw new BadRequestException(
+          'Số điểm sử dụng vượt quá số điểm hiện có',
+        );
+      }
+
+      loyaltyPointsUsed =
+        requestedPoints;
+
+      // 1.000 điểm = 1.000đ
+      loyaltyDiscountAmount =
+        requestedPoints;
     }
 
     // Tổng tiền cuối cùng khách cần thanh toán
-    const totalPrice = subtotal - discountAmount;
+    const priceAfterVoucher =
+      subtotal - discountAmount;
+
+    if (
+      loyaltyDiscountAmount >
+      priceAfterVoucher
+    ) {
+      throw new BadRequestException(
+        'Số điểm sử dụng vượt quá giá trị đơn hàng còn lại',
+      );
+    }
+
+    // Tổng tiền cuối cùng sau voucher và điểm tích lũy
+    const totalPrice =
+      priceAfterVoucher -
+      loyaltyDiscountAmount;
 
     // Order, snapshot, voucher và Cart được xử lý trong cùng transaction
     return this.prisma.$transaction(async (tx) => {
+
+      if (loyaltyPointsUsed > 0) {
+        // Điều kiện gte giúp chống trường hợp 2 checkout đồng thời dùng cùng số điểm
+        const result =
+          await tx.user.updateMany({
+            where: {
+              id: userId,
+              loyaltyPoints: {
+                gte: loyaltyPointsUsed,
+              },
+            },
+            data: {
+              loyaltyPoints: {
+                decrement:
+                  loyaltyPointsUsed,
+              },
+            },
+          });
+      
+        if (result.count === 0) {
+          throw new BadRequestException(
+            'Số điểm hiện tại không đủ để thanh toán',
+          );
+        }
+      }
+
       const order = await tx.order.create({
         data: {
           userId,
@@ -132,10 +242,13 @@ export class OrdersService {
 
           subtotal,
           discountAmount,
+          loyaltyDiscountAmount,
           totalPrice,
-
+          
           voucherId,
           voucherCode,
+          
+          loyaltyPointsUsed,
 
           items: {
             create: calculatedItems.map(
@@ -276,12 +389,25 @@ export class OrdersService {
             fullName: true,
           },
         },
+  
+        voucher: {
+          select: {
+            id: true,
+            code: true,
+            discountType: true,
+            discountValue: true,
+          },
+        },
+  
+        payment: true,
+  
         items: {
           include: {
             toppings: true,
           },
         },
       },
+  
       orderBy: {
         createdAt: 'desc',
       },
@@ -290,32 +416,46 @@ export class OrdersService {
 
   // ADMIN/STAFF xem chi tiết một đơn hàng
   async findOne(id: number) {
-    const order = await this.prisma.order.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            fullName: true,
+    const order =
+      await this.prisma.order.findUnique({
+        where: {
+          id,
+        },
+  
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              fullName: true,
+            },
+          },
+  
+          voucher: {
+            select: {
+              id: true,
+              code: true,
+              discountType: true,
+              discountValue: true,
+            },
+          },
+  
+          payment: true,
+  
+          items: {
+            include: {
+              toppings: true,
+            },
           },
         },
-        items: {
-          include: {
-            toppings: true,
-          },
-        },
-      },
-    });
-
+      });
+  
     if (!order) {
       throw new NotFoundException(
         'Không tìm thấy đơn hàng',
       );
     }
-
+  
     return order;
   }
 
@@ -372,13 +512,98 @@ export class OrdersService {
       );
     }
 
-    return this.prisma.order.update({
-      where: {
-        id,
+    // Khi đơn chưa hoàn tất thì chỉ cập nhật trạng thái
+    if (status !== 'COMPLETED') {
+      return this.prisma.order.update({
+        where: {
+          id,
+        },
+        data: {
+          status: status as any,
+        },
+      });
+    }
+
+    // Hoàn tất đơn và cộng điểm trong cùng transaction
+    return this.prisma.$transaction(
+      async (tx) => {
+        const currentOrder =
+          await tx.order.findUnique({
+            where: {
+              id,
+            },
+            include: {
+              user: {
+                include: {
+                  role: true,
+                },
+              },
+            },
+          });
+
+        if (!currentOrder) {
+          throw new NotFoundException(
+            'Không tìm thấy đơn hàng',
+          );
+        }
+
+        // Chỉ USER được tích điểm
+        const canEarnPoints =
+          currentOrder.user.role.name ===
+          'USER';
+
+        // Điểm tính trên số tiền thực trả cuối cùng
+        const paidAmount =
+          Number(
+            currentOrder.totalPrice,
+          );
+
+        // Mỗi 1.000đ = 10 điểm
+        const earnedPoints =
+          canEarnPoints
+            ? Math.floor(
+                paidAmount / 1000,
+              ) * 10
+            : 0;
+
+        const updatedOrder =
+          await tx.order.update({
+            where: {
+              id,
+            },
+            data: {
+              status: 'COMPLETED',
+
+              loyaltyPointsEarned:
+                earnedPoints,
+
+              loyaltyPointsGrantedAt:
+                canEarnPoints
+                  ? new Date()
+                  : null,
+            },
+          });
+
+        if (
+          canEarnPoints &&
+          earnedPoints > 0
+        ) {
+          await tx.user.update({
+            where: {
+              id:
+                currentOrder.userId,
+            },
+            data: {
+              loyaltyPoints: {
+                increment:
+                  earnedPoints,
+              },
+            },
+          });
+        }
+
+        return updatedOrder;
       },
-      data: {
-        status: status as any,
-      },
-    });
+    );
   }
 }

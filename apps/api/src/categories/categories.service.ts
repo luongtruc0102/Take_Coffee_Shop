@@ -104,4 +104,20 @@ import {
         },
       });
     }
+
+    // CategoriesService
+    async findAllForAdmin() {
+      return this.prisma.category.findMany({
+        include: {
+          _count: {
+            select: {
+              products: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    }
   }

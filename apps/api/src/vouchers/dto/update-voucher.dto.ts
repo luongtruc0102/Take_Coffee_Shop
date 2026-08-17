@@ -40,19 +40,19 @@ export class UpdateVoucherDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  minOrderValue?: number;
+  minOrderValue?: number | null;
 
   // Số tiền được giảm tối đa, thường dùng cho voucher PERCENT
   @IsOptional()
   @IsNumber()
   @Min(0)
-  maxDiscount?: number;
+  maxDiscount?: number | null;
 
   // Tổng số lượt voucher được phép sử dụng
   @IsOptional()
   @IsInt()
   @Min(1)
-  usageLimit?: number;
+  usageLimit?: number | null;
 
   // Thời điểm voucher bắt đầu có hiệu lực
   @IsOptional()

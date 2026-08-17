@@ -31,17 +31,17 @@ import {
     @IsOptional()
     @IsNumber()
     @Min(0)
-    minOrderValue?: number;
+    minOrderValue?: number | null;
   
     @IsOptional()
     @IsNumber()
     @Min(0)
-    maxDiscount?: number;
+    maxDiscount?: number | null;
   
     @IsOptional()
     @IsInt()
     @Min(1)
-    usageLimit?: number;
+    usageLimit?: number | null;
   
     // Client gửi theo chuẩn ISO date string
     @IsDateString()

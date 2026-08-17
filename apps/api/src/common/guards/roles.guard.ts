@@ -26,7 +26,7 @@ import {
       );
   
       // API không có @Roles() thì không cần kiểm tra Role
-      if (!requiredRoles) {
+      if (!requiredRoles || requiredRoles.length === 0) {
         return true;
       }
   

@@ -1,4 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
+
+import * as argon2 from 'argon2';
+import { CreateStaffDto } from './dto/create-staff.dto';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -46,6 +54,104 @@ export class UsersService {
     });
   }
 
+  // ADMIN tạo tài khoản nhân viên
+async createStaff(
+  createStaffDto: CreateStaffDto,
+) {
+  const email =
+    createStaffDto.email
+      .trim()
+      .toLowerCase();
+
+  const phone =
+    createStaffDto.phone.trim();
+
+  // Không cho trùng email
+  const existingEmail =
+    await this.prisma.user.findUnique({
+      where: {
+        email,
+      },
+    });
+
+  if (existingEmail) {
+    throw new ConflictException(
+      'Email đã được sử dụng',
+    );
+  }
+
+  // Không cho trùng số điện thoại
+  const existingPhone =
+    await this.prisma.user.findUnique({
+      where: {
+        phone,
+      },
+    });
+
+  if (existingPhone) {
+    throw new ConflictException(
+      'Số điện thoại đã được sử dụng',
+    );
+  }
+
+  // Staff chỉ được tạo với role STAFF
+  const staffRole =
+    await this.prisma.role.findUnique({
+      where: {
+        name: 'STAFF',
+      },
+    });
+
+  if (!staffRole) {
+    throw new InternalServerErrorException(
+      'Không tìm thấy Role STAFF',
+    );
+  }
+
+  // Không bao giờ lưu mật khẩu dạng plain text
+  const hashedPassword =
+    await argon2.hash(
+      createStaffDto.password,
+    );
+
+  return this.prisma.user.create({
+    data: {
+      email,
+      password:
+        hashedPassword,
+
+      fullName:
+        createStaffDto.fullName
+          .trim(),
+
+      phone,
+
+      roleId:
+        staffRole.id,
+    },
+
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      avatarUrl: true,
+      phone: true,
+
+      loyaltyPoints: true,
+      isActive: true,
+
+      role: {
+        select: {
+          name: true,
+        },
+      },
+
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+}
+
   // Lấy danh sách tất cả User trong hệ thống
   async findAll() {
     return this.prisma.user.findMany({
@@ -53,6 +159,11 @@ export class UsersService {
         id: true,
         email: true,
         fullName: true,
+        phone: true,
+        avatarUrl: true,
+        address: true,
+        loyaltyPoints: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
 
@@ -73,29 +184,106 @@ export class UsersService {
 
   // ADMIN xem chi tiết một tài khoản
   async findOne(id: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        createdAt: true,
-        updatedAt: true,
-
-        role: {
-          select: {
-            name: true,
+    const user =
+      await this.prisma.user.findUnique({
+        where: { id },
+  
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          phone: true,
+          avatarUrl: true,
+          address: true,
+          loyaltyPoints: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+  
+          role: {
+            select: {
+              name: true,
+            },
           },
         },
-      },
-    });
-
+      });
+  
     if (!user) {
-      throw new NotFoundException('Không tìm thấy người dùng');
+      throw new NotFoundException(
+        'Không tìm thấy người dùng',
+      );
     }
-
-    return user;
+  
+    const completedOrders =
+      await this.prisma.order.findMany({
+        where: {
+          userId: id,
+          status: 'COMPLETED',
+        },
+  
+        select: {
+          id: true,
+          totalPrice: true,
+          status: true,
+          createdAt: true,
+  
+          payment: {
+            select: {
+              method: true,
+              status: true,
+            },
+          },
+        },
+  
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+  
+    const totalSpent =
+      completedOrders.reduce(
+        (total, order) =>
+          total +
+          Number(order.totalPrice),
+        0,
+      );
+  
+    const recentOrders =
+      await this.prisma.order.findMany({
+        where: {
+          userId: id,
+        },
+  
+        select: {
+          id: true,
+          totalPrice: true,
+          status: true,
+          createdAt: true,
+        },
+  
+        orderBy: {
+          createdAt: 'desc',
+        },
+  
+        take: 5,
+      });
+  
+    return {
+      ...user,
+  
+      purchaseSummary: {
+        totalOrders:
+          completedOrders.length,
+  
+        totalSpent,
+  
+        lastPurchaseAt:
+          completedOrders[0]
+            ?.createdAt ?? null,
+      },
+  
+      recentOrders,
+    };
   }
 
   // ADMIN thay đổi Role của một User

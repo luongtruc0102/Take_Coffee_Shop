@@ -34,9 +34,30 @@ export class ProductsService {
         price: createProductDto.price,
         imageUrl: createProductDto.imageUrl,
         categoryId: createProductDto.categoryId,
+    
+        // Sản phẩm mới luôn có size S mặc định
+        variants: {
+          create: {
+            size: 'S',
+            price: createProductDto.price,
+          },
+        },
       },
+    
       include: {
         category: true,
+    
+        variants: {
+          orderBy: {
+            price: 'asc',
+          },
+        },
+    
+        toppings: {
+          include: {
+            topping: true,
+          },
+        },
       },
     });
   }
@@ -163,6 +184,18 @@ export class ProductsService {
       data: updateProductDto,
       include: {
         category: true,
+      
+        variants: {
+          orderBy: {
+            price: 'asc',
+          },
+        },
+      
+        toppings: {
+          include: {
+            topping: true,
+          },
+        },
       },
     });
   }
@@ -267,5 +300,30 @@ export class ProductsService {
     return {
       message: 'Đã xóa topping khỏi sản phẩm',
     };
+  }
+
+  // ADMIN xem toàn bộ sản phẩm để quản lý cả sản phẩm đã khóa
+  async findAllForAdmin() {
+    return this.prisma.product.findMany({
+      include: {
+        category: true,
+
+        toppings: {
+          include: {
+            topping: true,
+          },
+        },
+
+        variants: {
+          orderBy: {
+            price: 'asc',
+          },
+        },
+      },
+
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
   }
 }

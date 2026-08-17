@@ -46,7 +46,14 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
     findMyOrders(@Req() request: AuthenticatedRequest) {
       return this.ordersService.findMyOrders(request.user.sub);
     }
-  
+
+      // ADMIN và STAFF xem toàn bộ đơn hàng
+    @Roles('ADMIN', 'STAFF')
+    @Get('management/all')
+    findAll() {
+    return this.ordersService.findAll();
+    }
+
     // Lấy chi tiết một đơn nhưng chỉ khi nó thuộc user hiện tại
     @Get(':id')
     findMyOrder(
@@ -57,13 +64,6 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
         request.user.sub,
         id,
       );
-    }
-
-    // ADMIN và STAFF xem toàn bộ đơn hàng
-    @Roles('ADMIN', 'STAFF')
-    @Get('management/all')
-    findAll() {
-    return this.ordersService.findAll();
     }
 
     // ADMIN và STAFF xem chi tiết bất kỳ đơn hàng nào

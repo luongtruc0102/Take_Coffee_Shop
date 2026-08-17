@@ -180,4 +180,16 @@ export class ProductVariantsService {
       },
     });
   }
+
+  // ProductVariantsService
+  async findByProductForAdmin(productId: number) {
+    return this.prisma.productVariant.findMany({
+      where: {
+        productId,
+      },
+      orderBy: {
+        price: 'asc',
+      },
+    });
+  }
 }

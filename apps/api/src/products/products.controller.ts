@@ -19,6 +19,14 @@ import { UpdateProductStatusDto } from './dto/update-product-status.dto';
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
+  // ADMIN xem toàn bộ sản phẩm kể cả sản phẩm đã khóa
+  @Roles('ADMIN')
+  @Get('admin/all')
+  @Get(':id')
+  findAllForAdmin() {
+    return this.productsService.findAllForAdmin();
+  }
+
   // Chỉ ADMIN được phép tạo sản phẩm mới
   @Roles('ADMIN')
   @Post()
@@ -82,4 +90,5 @@ export class ProductsController {
   ) {
     return this.productsService.removeTopping(productId, toppingId);
   }
+  
 }

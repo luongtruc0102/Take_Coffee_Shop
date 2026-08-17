@@ -19,35 +19,61 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
+  //Đăng ký
   async register(registerDto: RegisterDto) {
-    const { email, password, fullName } = registerDto;
-
-    // Kiểm tra email đã tồn tại hay chưa
-    const existingUser = await this.usersService.findByEmail(email);
-
-    if (existingUser) {
-      throw new ConflictException('Email đã được sử dụng');
-    }
-
-    // Tự động gán Role USER cho tài khoản đăng ký
-    const userRole = await this.prisma.role.findUnique({
-      where: { name: 'USER' },
-    });
-
-    if (!userRole) {
-      throw new InternalServerErrorException('Không tìm thấy Role USER');
-    }
-
-    // Hash mật khẩu trước khi lưu vào database
-    const hashedPassword = await argon2.hash(password);
-
-    const user = await this.usersService.create(
+    const {
       email,
-      hashedPassword,
+      password,
       fullName,
-      userRole.id,
-    );
-
+    } = registerDto;
+  
+    // Kiểm tra email đã tồn tại hay chưa
+    const existingUser =
+      await this.usersService.findByEmail(
+        email,
+      );
+  
+    if (existingUser) {
+      throw new ConflictException(
+        'Email đã được sử dụng',
+      );
+    }
+  
+    // Tài khoản đầu tiên là ADMIN,
+    // các tài khoản tự đăng ký sau đó là USER
+    const userCount =
+      await this.prisma.user.count();
+  
+    const roleName =
+      userCount === 0
+        ? 'ADMIN'
+        : 'USER';
+  
+    const userRole =
+      await this.prisma.role.findUnique({
+        where: {
+          name: roleName,
+        },
+      });
+  
+    if (!userRole) {
+      throw new InternalServerErrorException(
+        `Không tìm thấy Role ${roleName}`,
+      );
+    }
+  
+    // Hash mật khẩu trước khi lưu vào database
+    const hashedPassword =
+      await argon2.hash(password);
+  
+    const user =
+      await this.usersService.create(
+        email,
+        hashedPassword,
+        fullName,
+        userRole.id,
+      );
+  
     // Không trả password về client
     return {
       id: user.id,
@@ -58,6 +84,7 @@ export class AuthService {
     };
   }
 
+  //Đăng nhập
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 

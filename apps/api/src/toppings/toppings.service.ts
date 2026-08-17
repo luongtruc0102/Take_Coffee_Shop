@@ -123,4 +123,13 @@ export class ToppingsService {
       },
     });
   }
+
+  // ToppingsService
+  async findAllForAdmin() {
+    return this.prisma.topping.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
 }

@@ -67,4 +67,15 @@ import {
         statusDto.isActive,
       );
     }
+
+    // ProductVariantsController
+    @Roles('ADMIN')
+    @Get('products/:productId/variants/admin/all')
+    findByProductForAdmin(
+      @Param('productId', ParseIntPipe) productId: number,
+    ) {
+      return this.productVariantsService.findByProductForAdmin(
+        productId,
+      );
+    }
   }

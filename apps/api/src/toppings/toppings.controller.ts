@@ -61,4 +61,11 @@ export class ToppingsController {
       updateToppingStatusDto.isActive,
     );
   }
+
+  // ToppingsController
+  @Roles('ADMIN')
+  @Get('admin/all')
+  findAllForAdmin() {
+    return this.toppingsService.findAllForAdmin();
+  }
 }

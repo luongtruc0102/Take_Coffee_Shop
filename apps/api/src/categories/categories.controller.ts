@@ -61,4 +61,11 @@ import {
         updateCategoryStatusDto.isActive,
       );
     }
+
+    // CategoriesController
+    @Roles('ADMIN')
+    @Get('admin/all')
+    findAllForAdmin() {
+      return this.categoriesService.findAllForAdmin();
+    }
   }

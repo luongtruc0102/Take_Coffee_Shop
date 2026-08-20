@@ -3,15 +3,25 @@ import {
     Controller,
     Get,
     Param,
+    ParseFloatPipe,
     ParseIntPipe,
     Patch,
     Post,
+    Query,
+    Req,
   } from '@nestjs/common';
+  import { Request } from 'express';
   import { Roles } from '../common/decorators/roles.decorator';
   import { CreateVoucherDto } from './dto/create-voucher.dto';
   import { UpdateVoucherStatusDto } from './dto/update-voucher-status.dto';
   import { UpdateVoucherDto } from './dto/update-voucher.dto';
   import { VouchersService } from './vouchers.service';
+
+  interface AuthenticatedRequest extends Request {
+    user: {
+      sub: number;
+    };
+  }
   
   @Controller('vouchers')
   export class VouchersController {
@@ -31,6 +41,19 @@ import {
     @Get()
     findAll() {
       return this.vouchersService.findAll();
+    }
+
+    // USER xem các voucher hiện hành và khả năng áp dụng cho đơn đang chọn
+    @Roles('USER', 'STAFF')
+    @Get('available/checkout')
+    findAvailableForCheckout(
+      @Req() request: AuthenticatedRequest,
+      @Query('subtotal', ParseFloatPipe) subtotal: number,
+    ) {
+      return this.vouchersService.findAvailableForCheckout(
+        request.user.sub,
+        subtotal,
+      );
     }
   
     @Roles('ADMIN')

@@ -2,6 +2,7 @@ import type {
     CreateVoucherInput,
     UpdateVoucherInput,
     Voucher,
+    CheckoutVoucher,
   } from '@/types/voucher';
   
   const API_URL =
@@ -147,5 +148,28 @@ import type {
       );
     }
   
+    return data;
+  }
+
+  export async function getCheckoutVouchers(
+    accessToken: string,
+    subtotal: number,
+  ): Promise<CheckoutVoucher[]> {
+    const response = await fetch(
+      `${getApiUrl()}/vouchers/available/checkout?subtotal=${encodeURIComponent(subtotal)}`,
+      {
+        headers: getHeaders(accessToken),
+        cache: 'no-store',
+      },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.message || 'Không thể tải voucher',
+      );
+    }
+
     return data;
   }

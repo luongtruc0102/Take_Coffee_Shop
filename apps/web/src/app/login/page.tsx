@@ -1,16 +1,25 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, Suspense, useState } from 'react';
+import {
+  useRouter,
+  useSearchParams,
+} from 'next/navigation';
 import { login } from '@/services/auth.service';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const searchParams =
+    useSearchParams();
+
+  const redirect =
+    searchParams.get('redirect');
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,
@@ -25,31 +34,39 @@ export default function LoginPage() {
         email,
         password,
       });
-
+    
       // Lưu JWT để gọi các API cần xác thực
       localStorage.setItem(
         'accessToken',
         result.accessToken,
       );
-
+    
       localStorage.setItem(
         'user',
-        JSON.stringify(result.user),
+        JSON.stringify(
+          result.user,
+        ),
       );
 
-      // Trang admin chỉ dành cho ADMIN
-      if (result.user.role !== 'ADMIN') {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('user');
+     // Nếu có trang cần quay lại thì ưu tiên redirect
+    if (redirect) {
+      router.replace(redirect);
+      return;
+    }
 
-        setError(
-          'Tài khoản không có quyền truy cập trang quản trị',
-        );
+    // Điều hướng theo vai trò sau khi đăng nhập
+    if (result.user.role === 'ADMIN') {
+      router.replace('/admin');
+      return;
+    }
 
-        return;
-      }
+    if (result.user.role === 'USER') {
+      router.replace('/');
+      return;
+    }
 
-      router.push('/admin');
+    // STAFF sẽ có giao diện riêng sau
+    router.replace('/');
     } catch (error) {
       setError(
         error instanceof Error
@@ -70,7 +87,7 @@ export default function LoginPage() {
           </h1>
 
           <p className="mt-2 text-sm text-[#78866B]">
-            Đăng nhập trang quản trị
+            Đăng nhập vào Take Coffee
           </p>
         </div>
 
@@ -89,7 +106,7 @@ export default function LoginPage() {
               onChange={(event) =>
                 setEmail(event.target.value)
               }
-              placeholder="admin@gmail.com"
+              placeholder="email@example.com"
               required
               className="w-full rounded-xl border border-[#DDD4CA] px-4 py-3 outline-none transition focus:border-[#C9894B] focus:ring-2 focus:ring-[#C9894B]/20"
             />
@@ -130,5 +147,18 @@ export default function LoginPage() {
         </form>
       </div>
     </main>
+  );
+}
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#FAF8F5] text-sm text-[#78866B]">
+          Đang tải trang đăng nhập...
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

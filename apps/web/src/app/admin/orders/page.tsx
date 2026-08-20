@@ -65,42 +65,47 @@ export default function AdminOrdersPage() {
     null,
   );
 
+
   useEffect(() => {
-    loadOrders();
-  }, []);
+    let cancelled = false;
 
-  async function loadOrders() {
-    try {
-      setLoading(true);
-      setError('');
+    async function loadOrders() {
+      // Nhường sang microtask để không cập nhật state đồng bộ trong effect.
+      await Promise.resolve();
 
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
+      try {
+        const accessToken = localStorage.getItem('accessToken');
 
-      if (!accessToken) {
-        throw new Error(
-          'Không tìm thấy phiên đăng nhập.',
-        );
+        if (!accessToken) {
+          throw new Error('Không tìm thấy phiên đăng nhập.');
+        }
+
+        const data = await getAdminOrders(accessToken);
+
+        if (!cancelled) {
+          setOrders(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : 'Không thể tải đơn hàng',
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-
-      const data =
-        await getAdminOrders(
-          accessToken,
-        );
-
-      setOrders(data);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'Không thể tải đơn hàng',
-      );
-    } finally {
-      setLoading(false);
     }
-  }
+
+    void loadOrders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleUpdateStatus(
     order: Order,
@@ -538,6 +543,11 @@ export default function AdminOrdersPage() {
                               {
                                 order.receiverPhone
                               }
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-[#C9894B]">
+                              {order.fulfillmentMethod === 'PICKUP'
+                                ? 'Đến quán lấy'
+                                : 'Giao hàng'}
                             </p>
                           </div>
                         </td>

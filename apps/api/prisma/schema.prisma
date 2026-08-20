@@ -15,11 +15,11 @@ datasource db {
 // Vai trò của người dùng trong hệ thống
 // Ví dụ: ADMIN, STAFF, USER
 model Role {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
+  id   Int    @id @default(autoincrement())
+  name String @unique
 
   // Một Role có thể được gán cho nhiều User
-  users     User[]
+  users User[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -27,29 +27,29 @@ model Role {
 
 // Tài khoản người dùng trong hệ thống
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id    Int    @id @default(autoincrement())
+  email String @unique
 
   // Mật khẩu sẽ được hash trước khi lưu vào database
-  password  String
+  password String
 
   fullName  String?
-  phone    String? @unique
-  avatarUrl     String?
-  address       String?
+  phone     String? @unique
+  avatarUrl String?
+  address   String?
 
   // Foreign Key liên kết User với Role
-  roleId    Int
-  role      Role     @relation(fields: [roleId], references: [id])
+  roleId Int
+  role   Role @relation(fields: [roleId], references: [id])
 
   // Trạng thái tài khoản: true = hoạt động, false = bị khóa
-  isActive  Boolean  @default(true)
+  isActive Boolean @default(true)
 
   // Điểm khách hàng tích lũy từ các đơn hoàn tất
   loyaltyPoints Int @default(0)
 
   // Mỗi user có tối đa một giỏ hàng
-  cart      Cart?
+  cart Cart?
 
   // Các đơn hàng mà user đã đặt
   orders Order[]
@@ -60,65 +60,65 @@ model User {
 
 // Danh mục sản phẩm
 model Category {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
   description String?
-  isActive    Boolean   @default(true)
+  isActive    Boolean @default(true)
 
   // Một danh mục có nhiều sản phẩm
-  products    Product[]
+  products Product[]
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Sản phẩm trong menu
 model Product {
-  id          Int       @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   name        String
   description String?
-  price       Decimal   @db.Decimal(10, 2)
+  price       Decimal @db.Decimal(10, 2)
   imageUrl    String?
-  isActive    Boolean   @default(true)
+  isActive    Boolean @default(true)
 
   // Mỗi sản phẩm thuộc một danh mục
-  categoryId  Int
-  category    Category  @relation(fields: [categoryId], references: [id])
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
 
   // Một sản phẩm có thể dùng nhiều topping
-  toppings    ProductTopping[]
+  toppings ProductTopping[]
 
   // Một sản phẩm có thể có nhiều size / biến thể
-  variants    ProductVariant[]
+  variants ProductVariant[]
 
   // Các món trong giỏ hàng đang tham chiếu tới sản phẩm này
-  cartItems   CartItem[]
+  cartItems CartItem[]
 
   // Các OrderItem từng mua sản phẩm này
   orderItems OrderItem[]
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([categoryId])
 }
 
 // Biến thể sản phẩm theo size
 model ProductVariant {
-  id        Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // Ví dụ: S, M, L
-  size      String
+  size String
 
   // Giá riêng của từng size
-  price     Decimal  @db.Decimal(10, 2)
+  price Decimal @db.Decimal(10, 2)
 
   // Trạng thái variant: true = hoạt động, false = bị khóa
-  isActive  Boolean  @default(true)
+  isActive Boolean @default(true)
 
   // Mỗi variant thuộc về một sản phẩm
   productId Int
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   // Các CartItem đang sử dụng size này
   cartItems CartItem[]
@@ -131,29 +131,28 @@ model ProductVariant {
 
   // Một sản phẩm không được có 2 variant cùng size
   @@unique([productId, size])
-
   // Tăng tốc truy vấn theo productId
   @@index([productId])
 }
 
 // Topping có thể thêm vào sản phẩm
 model Topping {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
-  price       Decimal   @db.Decimal(10, 2)
-  isActive    Boolean   @default(true)
+  id       Int     @id @default(autoincrement())
+  name     String  @unique
+  price    Decimal @db.Decimal(10, 2)
+  isActive Boolean @default(true)
 
   // Một topping có thể áp dụng cho nhiều sản phẩm
-  products    ProductTopping[]
+  products ProductTopping[]
 
   // Các CartItem đang chọn topping này
-  cartItems   CartItemTopping[]
+  cartItems CartItemTopping[]
 
   // Các topping đã được lưu trong lịch sử đơn hàng
   orderItems OrderItemTopping[]
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Bảng trung gian cho quan hệ nhiều-nhiều Product và Topping
@@ -166,20 +165,19 @@ model ProductTopping {
 
   // Một cặp Product + Topping chỉ được tồn tại một lần
   @@id([productId, toppingId])
-
   @@index([toppingId])
 }
 
 // Giỏ hàng của người dùng
 model Cart {
-  id     Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // Mỗi user chỉ có một giỏ hàng
   userId Int  @unique
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Các món hiện có trong giỏ hàng
-  items  CartItem[]
+  items CartItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -225,7 +223,6 @@ model CartItemTopping {
 
   // Một topping chỉ được chọn một lần trong cùng một CartItem
   @@id([cartItemId, toppingId])
-
   @@index([toppingId])
 }
 
@@ -237,6 +234,12 @@ enum OrderStatus {
   DELIVERING
   COMPLETED
   CANCELLED
+}
+
+// Cách khách nhận món
+enum FulfillmentMethod {
+  DELIVERY
+  PICKUP
 }
 
 // Đơn hàng của người dùng
@@ -257,14 +260,24 @@ model Order {
   totalPrice Decimal @db.Decimal(10, 2)
 
   // Thông tin nhận hàng được lưu snapshot theo từng đơn
-  receiverName    String
-  receiverPhone   String
-  deliveryAddress String
-  note            String?
+  fulfillmentMethod FulfillmentMethod @default(DELIVERY)
+  receiverName      String
+  receiverPhone     String
+  deliveryAddress   String
+  note              String?
+
+  // Snapshot giao hàng do backend tính lại lúc checkout
+  deliveryLatitude       Decimal? @db.Decimal(10, 7)
+  deliveryLongitude      Decimal? @db.Decimal(10, 7)
+  deliveryDistanceKm     Decimal  @default(0) @db.Decimal(10, 2)
+  deliveryBaseFee        Decimal  @default(0) @db.Decimal(10, 2)
+  deliveryDiscountAmount Decimal  @default(0) @db.Decimal(10, 2)
+  deliveryFee            Decimal  @default(0) @db.Decimal(10, 2)
 
   status OrderStatus @default(PENDING)
 
-  items OrderItem[]
+  items           OrderItem[]
+  appliedVouchers OrderVoucher[]
 
   // Voucher đã áp dụng cho đơn hàng
   voucherId Int?
@@ -279,10 +292,6 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([userId])
-  @@index([status])
-  @@index([voucherId])
-
   // Số điểm khách đã dùng cho đơn hàng
   loyaltyPointsUsed Int @default(0)
 
@@ -294,6 +303,10 @@ model Order {
 
   // Dùng để chống cộng điểm nhiều lần
   loyaltyPointsGrantedAt DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([voucherId])
 }
 
 // Một sản phẩm trong đơn hàng
@@ -394,10 +407,28 @@ model Voucher {
   isActive Boolean @default(true)
 
   // Các đơn hàng đã áp dụng voucher
-  orders Order[]
+  orders        Order[]
+  orderVouchers OrderVoucher[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Các voucher thực tế đã áp dụng cho một đơn hàng
+model OrderVoucher {
+  orderId   Int
+  voucherId Int
+
+  // Snapshot để lịch sử không đổi khi voucher được chỉnh sửa
+  code           String
+  discountAmount Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  voucher Voucher @relation(fields: [voucherId], references: [id])
+
+  @@id([orderId, voucherId])
+  @@index([voucherId])
 }
 
 // Phương thức thanh toán

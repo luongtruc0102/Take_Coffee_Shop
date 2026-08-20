@@ -1,3 +1,4 @@
+import type { OrderStatus } from '../../generated/prisma/enums';
 import {
   BadRequestException,
   Injectable,
@@ -5,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CheckoutDto } from './dto/checkout.dto';
+import { DeliveryLocationQuoteDto } from './dto/delivery-location-quote.dto';
+import { DeliveryQuoteDto } from './dto/delivery-quote.dto';
 import { VouchersService } from '../vouchers/vouchers.service';
 
 @Injectable()
@@ -14,13 +17,276 @@ export class OrdersService {
     private readonly vouchersService: VouchersService,
   ) {}
 
-  // Checkout giỏ hàng và tạo Order
+  private getStoreCoordinates() {
+    const latitude = Number(process.env.STORE_LATITUDE ?? '10.8569371');
+    const longitude = Number(process.env.STORE_LONGITUDE ?? '106.7465042');
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      throw new BadRequestException('Tọa độ cửa hàng chưa được cấu hình');
+    }
+
+    return { latitude, longitude };
+  }
+
+  private getStoreAddress() {
+    return (
+      process.env.STORE_ADDRESS ??
+      '78 Đường Số 29, phường Hiệp Bình, TP. Hồ Chí Minh'
+    );
+  }
+
+  private calculateDeliveryPricing(distanceKm: number, subtotal: number) {
+    const deliveryBaseFee =
+      15000 + Math.max(0, Math.ceil(distanceKm - 3)) * 5000;
+    const requestedDiscount =
+      subtotal >= 500000 ? 40000 : subtotal >= 300000 ? 20000 : 0;
+    const deliveryDiscountAmount = Math.min(requestedDiscount, deliveryBaseFee);
+
+    return {
+      deliveryBaseFee,
+      deliveryDiscountAmount,
+      deliveryFee: deliveryBaseFee - deliveryDiscountAmount,
+    };
+  }
+
+  private async getDrivingRoute(
+    destinationLatitude: number,
+    destinationLongitude: number,
+    includeGeometry = false,
+    reverseRoute = false,
+  ) {
+    const store = this.getStoreCoordinates();
+    const routeOptions = includeGeometry
+      ? 'overview=full&geometries=geojson'
+      : 'overview=false';
+    const routePoints = reverseRoute
+      ? `${destinationLongitude},${destinationLatitude};${store.longitude},${store.latitude}`
+      : `${store.longitude},${store.latitude};${destinationLongitude},${destinationLatitude}`;
+    const response = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${routePoints}?${routeOptions}`,
+    );
+    const data = (await response.json()) as {
+      code: string;
+      routes?: Array<{
+        distance: number;
+        geometry?: {
+          type: 'LineString';
+          coordinates: Array<[number, number]>;
+        };
+      }>;
+    };
+
+    if (!response.ok || data.code !== 'Ok' || !data.routes?.[0]) {
+      throw new BadRequestException('Không thể tính tuyến đường giao hàng');
+    }
+
+    const route = data.routes[0];
+
+    return {
+      distanceKm: Math.ceil((route.distance / 1000) * 10) / 10,
+      routeCoordinates:
+        route.geometry?.coordinates.map(([longitude, latitude]) => ({
+          latitude,
+          longitude,
+        })) ?? [],
+    };
+  }
+
+  private getMapRequestHeaders() {
+    return {
+      'User-Agent': 'TakeCoffeeShop/1.0',
+      'Accept-Language': 'vi',
+    };
+  }
+
+  private formatPhotonAddress(properties: {
+    name?: string;
+    street?: string;
+    housenumber?: string;
+    district?: string;
+    city?: string;
+    county?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+  }) {
+    const streetAddress = [properties.housenumber, properties.street]
+      .filter(Boolean)
+      .join(' ');
+    const parts = [
+      streetAddress,
+      properties.name,
+      properties.district,
+      properties.city,
+      properties.county,
+      properties.state,
+      properties.postcode,
+      properties.country,
+    ].filter((part): part is string => Boolean(part?.trim()));
+
+    return parts
+      .filter(
+        (part, index) =>
+          parts.findIndex(
+            (candidate) => candidate.toLowerCase() === part.toLowerCase(),
+          ) === index,
+      )
+      .join(', ');
+  }
+
+  private async reverseGeocode(latitude: number, longitude: number) {
+    const response = await fetch(
+      `https://photon.komoot.io/reverse?limit=1&lat=${latitude}&lon=${longitude}`,
+      {
+        headers: this.getMapRequestHeaders(),
+      },
+    );
+    const data = (await response.json()) as {
+      features?: Array<{
+        properties: Parameters<OrdersService['formatPhotonAddress']>[0];
+      }>;
+    };
+    const normalizedAddress = data.features?.[0]
+      ? this.formatPhotonAddress(data.features[0].properties)
+      : '';
+
+    if (!response.ok || !normalizedAddress) {
+      throw new BadRequestException(
+        'Không tìm thấy địa chỉ tại vị trí đã chọn',
+      );
+    }
+
+    return normalizedAddress;
+  }
+
+  private async buildDeliveryQuote(
+    latitude: number,
+    longitude: number,
+    normalizedAddress: string,
+    subtotal: number,
+    fulfillmentMethod?: 'DELIVERY' | 'PICKUP',
+  ) {
+    const isPickupRoute = fulfillmentMethod === 'PICKUP';
+    const route = await this.getDrivingRoute(
+      latitude,
+      longitude,
+      true,
+      isPickupRoute,
+    );
+    const deliveryPricing = isPickupRoute
+      ? {
+          deliveryBaseFee: 0,
+          deliveryDiscountAmount: 0,
+          deliveryFee: 0,
+        }
+      : this.calculateDeliveryPricing(route.distanceKm, subtotal);
+
+    return {
+      latitude,
+      longitude,
+      normalizedAddress,
+      distanceKm: route.distanceKm,
+      routeCoordinates: route.routeCoordinates,
+      ...deliveryPricing,
+    };
+  }
+
+  async searchAddressSuggestions(query: string) {
+    const store = this.getStoreCoordinates();
+    const response = await fetch(
+      `https://photon.komoot.io/api/?limit=5&countrycode=VN&lat=${store.latitude}&lon=${store.longitude}&q=${encodeURIComponent(query.trim())}`,
+      { headers: this.getMapRequestHeaders() },
+    );
+    const data = (await response.json()) as {
+      features?: Array<{
+        geometry: {
+          coordinates: [number, number];
+        };
+        properties: Parameters<OrdersService['formatPhotonAddress']>[0] & {
+          osm_id?: number;
+          osm_type?: string;
+          countrycode?: string;
+        };
+      }>;
+    };
+
+    if (!response.ok) {
+      throw new BadRequestException('Không thể tải gợi ý địa chỉ');
+    }
+
+    return (data.features ?? [])
+      .map((feature, index) => ({
+        id: `${feature.properties.osm_type ?? 'place'}-${feature.properties.osm_id ?? index}`,
+        displayName: this.formatPhotonAddress(feature.properties),
+        latitude: Number(feature.geometry.coordinates[1]),
+        longitude: Number(feature.geometry.coordinates[0]),
+        countryCode: feature.properties.countrycode?.toLowerCase(),
+      }))
+      .filter(
+        (result) =>
+          result.displayName &&
+          Number.isFinite(result.latitude) &&
+          Number.isFinite(result.longitude) &&
+          (!result.countryCode || result.countryCode === 'vn'),
+      )
+      .map((result) => ({
+        id: result.id,
+        displayName: result.displayName,
+        latitude: result.latitude,
+        longitude: result.longitude,
+      }));
+  }
+
+  async quoteDelivery(deliveryQuoteDto: DeliveryQuoteDto) {
+    const geocodeResponse = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=vn&q=${encodeURIComponent(deliveryQuoteDto.deliveryAddress.trim())}`,
+      { headers: this.getMapRequestHeaders() },
+    );
+    const geocodeData = (await geocodeResponse.json()) as Array<{
+      lat: string;
+      lon: string;
+      display_name: string;
+    }>;
+
+    if (!geocodeResponse.ok || geocodeData.length === 0) {
+      throw new BadRequestException('Không tìm thấy địa chỉ trên bản đồ');
+    }
+
+    return this.buildDeliveryQuote(
+      Number(geocodeData[0].lat),
+      Number(geocodeData[0].lon),
+      geocodeData[0].display_name,
+      deliveryQuoteDto.subtotal,
+      deliveryQuoteDto.fulfillmentMethod,
+    );
+  }
+
+  async quoteDeliveryLocation(
+    deliveryLocationQuoteDto: DeliveryLocationQuoteDto,
+  ) {
+    const normalizedAddress =
+      deliveryLocationQuoteDto.deliveryAddress?.trim() ||
+      (await this.reverseGeocode(
+        deliveryLocationQuoteDto.latitude,
+        deliveryLocationQuoteDto.longitude,
+      ));
+
+    return this.buildDeliveryQuote(
+      deliveryLocationQuoteDto.latitude,
+      deliveryLocationQuoteDto.longitude,
+      normalizedAddress,
+      deliveryLocationQuoteDto.subtotal,
+      deliveryLocationQuoteDto.fulfillmentMethod,
+    );
+  }
+  // Checkout các món được chọn trong giỏ hàng và tạo Order
   async checkout(userId: number, checkoutDto: CheckoutDto) {
-    // Lấy toàn bộ dữ liệu cần thiết để backend tự tính lại giá
+    // Lấy toàn bộ giỏ hàng để backend tự kiểm tra dữ liệu
     const cart = await this.prisma.cart.findUnique({
       where: {
         userId,
       },
+
       include: {
         items: {
           include: {
@@ -29,7 +295,9 @@ export class OrdersService {
                 category: true,
               },
             },
+
             variant: true,
+
             toppings: {
               include: {
                 topping: true,
@@ -44,12 +312,27 @@ export class OrdersService {
       throw new BadRequestException('Giỏ hàng đang trống');
     }
 
-    // Kiểm tra lại trạng thái sản phẩm trước khi tạo Order
-    for (const item of cart.items) {
-      if (
-        !item.product.isActive ||
-        !item.product.category.isActive
-      ) {
+    // Chỉ lấy các CartItem mà khách đã chọn
+    const selectedItems = cart.items.filter((item) =>
+      checkoutDto.cartItemIds.includes(item.id),
+    );
+
+    // Không cho gửi CartItem không thuộc giỏ hàng của user hiện tại
+    if (selectedItems.length !== checkoutDto.cartItemIds.length) {
+      throw new BadRequestException(
+        'Có sản phẩm được chọn không tồn tại trong giỏ hàng',
+      );
+    }
+
+    if (selectedItems.length === 0) {
+      throw new BadRequestException(
+        'Vui lòng chọn ít nhất một sản phẩm để thanh toán',
+      );
+    }
+
+    // Kiểm tra lại trạng thái sản phẩm ngay trước khi tạo Order
+    for (const item of selectedItems) {
+      if (!item.product.isActive || !item.product.category.isActive) {
         throw new BadRequestException(
           `Sản phẩm "${item.product.name}" hiện không còn khả dụng`,
         );
@@ -72,17 +355,17 @@ export class OrdersService {
       }
     }
 
-    // Luôn tính giá từ database, không tin dữ liệu giá từ client
-    const calculatedItems = cart.items.map((item) => {
+    // Backend luôn tính lại giá từ database
+    const calculatedItems = selectedItems.map((item) => {
       const variantPrice = Number(item.variant.price);
 
       const toppingTotal = item.toppings.reduce(
-        (total, itemTopping) =>
-          total + Number(itemTopping.topping.price),
+        (total, itemTopping) => total + Number(itemTopping.topping.price),
         0,
       );
 
       const unitPrice = variantPrice + toppingTotal;
+
       const lineTotal = unitPrice * item.quantity;
 
       return {
@@ -93,137 +376,192 @@ export class OrdersService {
       };
     });
 
-    // Tổng tiền trước khi áp dụng voucher
+    // Tổng tiền các món được chọn trước khi giảm giá
     const subtotal = calculatedItems.reduce(
       (total, current) => total + current.lineTotal,
       0,
     );
 
+    // Backend tự quyết định phí dựa trên cách khách nhận món.
+    const isPickup = checkoutDto.fulfillmentMethod === 'PICKUP';
+    const storeCoordinates = this.getStoreCoordinates();
+    const deliveryAddress = isPickup
+      ? this.getStoreAddress()
+      : checkoutDto.deliveryAddress.trim();
+    const deliveryLatitude = isPickup
+      ? storeCoordinates.latitude
+      : Number(checkoutDto.deliveryLatitude);
+    const deliveryLongitude = isPickup
+      ? storeCoordinates.longitude
+      : Number(checkoutDto.deliveryLongitude);
+    const deliveryDistanceKm = isPickup
+      ? 0
+      : (await this.getDrivingRoute(deliveryLatitude, deliveryLongitude))
+          .distanceKm;
+    const { deliveryBaseFee, deliveryDiscountAmount, deliveryFee } = isPickup
+      ? {
+          deliveryBaseFee: 0,
+          deliveryDiscountAmount: 0,
+          deliveryFee: 0,
+        }
+      : this.calculateDeliveryPricing(deliveryDistanceKm, subtotal);
+
+    // =========================
+    // VOUCHER
+    // =========================
+
     let discountAmount = 0;
-    let voucherId: number | undefined;
+
+    const voucherIds: number[] = [];
+    const appliedVouchers: Array<{
+      voucherId: number;
+      code: string;
+      discountAmount: number;
+    }> = [];
+
     let voucherCode: string | undefined;
 
-    if (checkoutDto.voucherCode) {
-      // Backend tự kiểm tra thời hạn, min order và giới hạn sử dụng
-      const voucherResult =
-        await this.vouchersService.validateForCheckout(
-          checkoutDto.voucherCode,
+    const requestedVoucherCodes = [
+      ...(checkoutDto.voucherCodes ?? []),
+      ...(checkoutDto.voucherCode ? [checkoutDto.voucherCode] : []),
+    ].map((code) => code.trim().toUpperCase());
+
+    if (new Set(requestedVoucherCodes).size !== requestedVoucherCodes.length) {
+      throw new BadRequestException('Không thể áp dụng một voucher nhiều lần');
+    }
+
+    if (requestedVoucherCodes.length > 2) {
+      throw new BadRequestException(
+        'Mỗi đơn hàng chỉ được dùng tối đa 2 voucher',
+      );
+    }
+
+    if (requestedVoucherCodes.length > 0) {
+      const appliedVoucherCodes: string[] = [];
+
+      for (const code of requestedVoucherCodes) {
+        // Mỗi voucher được kiểm tra độc lập theo tổng tiền hàng gốc.
+        const voucherResult = await this.vouchersService.validateForCheckout(
+          code,
           subtotal,
           userId,
         );
 
-        voucherId =
-          voucherResult.voucher?.id;
-      
-        voucherCode =
-          voucherResult.voucherCode;
-        
-        discountAmount =
-          voucherResult.discountAmount;
+        if (voucherResult.voucher) {
+          voucherIds.push(voucherResult.voucher.id);
+          appliedVouchers.push({
+            voucherId: voucherResult.voucher.id,
+            code: voucherResult.voucherCode,
+            discountAmount: voucherResult.discountAmount,
+          });
+        }
+
+        appliedVoucherCodes.push(voucherResult.voucherCode);
+        discountAmount += voucherResult.discountAmount;
+      }
+
+      discountAmount = Math.min(discountAmount, subtotal);
+      voucherCode = appliedVoucherCodes.join(', ');
     }
+
+    // Giữ relation cũ trỏ tới voucher đầu tiên; voucherCode lưu snapshot đủ các mã.
+    const voucherId = voucherIds[0];
+
+    // =========================
+    // LOYALTY POINTS
+    // =========================
 
     let loyaltyPointsUsed = 0;
     let loyaltyDiscountAmount = 0;
 
-    const requestedPoints =
-      checkoutDto.loyaltyPointsToUse ?? 0;
+    const requestedPoints = checkoutDto.loyaltyPointsToUse ?? 0;
 
     if (requestedPoints > 0) {
-      const user =
-        await this.prisma.user.findUnique({
-          where: {
-            id: userId,
-          },
-          include: {
-            role: true,
-          },
-        });
+      const user = await this.prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+
+        include: {
+          role: true,
+        },
+      });
 
       if (!user) {
-        throw new NotFoundException(
-          'Không tìm thấy người dùng',
-        );
+        throw new NotFoundException('Không tìm thấy người dùng');
       }
 
-      // Chỉ khách hàng USER được sử dụng điểm tích lũy
+      // Chỉ khách hàng USER được dùng điểm
       if (user.role.name !== 'USER') {
         throw new BadRequestException(
           'Chỉ khách hàng mới được sử dụng điểm tích lũy',
         );
       }
 
-      // Phải đạt mốc 5.000 điểm mới mở khóa chức năng đổi điểm
+      // Phải đạt ít nhất 5.000 điểm mới mở khóa đổi điểm
       if (user.loyaltyPoints < 5000) {
         throw new BadRequestException(
           'Bạn cần đạt ít nhất 5.000 điểm để sử dụng điểm tích lũy',
         );
       }
 
-      if (
-        requestedPoints % 1000 !==
-        0
-      ) {
+      // Chỉ cho sử dụng theo bội số 1.000 điểm
+      if (requestedPoints % 1000 !== 0) {
         throw new BadRequestException(
           'Số điểm sử dụng phải là bội số của 1.000',
         );
       }
 
-      if (
-        requestedPoints >
-        user.loyaltyPoints
-      ) {
+      if (requestedPoints > user.loyaltyPoints) {
         throw new BadRequestException(
           'Số điểm sử dụng vượt quá số điểm hiện có',
         );
       }
 
-      loyaltyPointsUsed =
-        requestedPoints;
+      loyaltyPointsUsed = requestedPoints;
 
-      // 1.000 điểm = 1.000đ
-      loyaltyDiscountAmount =
-        requestedPoints;
+      // 1.000 điểm = giảm 1.000đ
+      loyaltyDiscountAmount = requestedPoints;
     }
 
-    // Tổng tiền cuối cùng khách cần thanh toán
-    const priceAfterVoucher =
-      subtotal - discountAmount;
+    // =========================
+    // TOTAL
+    // =========================
 
-    if (
-      loyaltyDiscountAmount >
-      priceAfterVoucher
-    ) {
+    const priceAfterVoucher = subtotal - discountAmount;
+
+    // Không cho điểm giảm nhiều hơn số tiền còn lại
+    if (loyaltyDiscountAmount > priceAfterVoucher) {
       throw new BadRequestException(
         'Số điểm sử dụng vượt quá giá trị đơn hàng còn lại',
       );
     }
 
-    // Tổng tiền cuối cùng sau voucher và điểm tích lũy
-    const totalPrice =
-      priceAfterVoucher -
-      loyaltyDiscountAmount;
+    const totalPrice = priceAfterVoucher - loyaltyDiscountAmount + deliveryFee;
 
-    // Order, snapshot, voucher và Cart được xử lý trong cùng transaction
+    // =========================
+    // TRANSACTION
+    // =========================
+
     return this.prisma.$transaction(async (tx) => {
-
       if (loyaltyPointsUsed > 0) {
-        // Điều kiện gte giúp chống trường hợp 2 checkout đồng thời dùng cùng số điểm
-        const result =
-          await tx.user.updateMany({
-            where: {
-              id: userId,
-              loyaltyPoints: {
-                gte: loyaltyPointsUsed,
-              },
+        // Trừ điểm an toàn để tránh 2 checkout đồng thời dùng cùng số điểm
+        const result = await tx.user.updateMany({
+          where: {
+            id: userId,
+
+            loyaltyPoints: {
+              gte: loyaltyPointsUsed,
             },
-            data: {
-              loyaltyPoints: {
-                decrement:
-                  loyaltyPointsUsed,
-              },
+          },
+
+          data: {
+            loyaltyPoints: {
+              decrement: loyaltyPointsUsed,
             },
-          });
-      
+          },
+        });
+
         if (result.count === 0) {
           throw new BadRequestException(
             'Số điểm hiện tại không đủ để thanh toán',
@@ -235,53 +573,82 @@ export class OrdersService {
         data: {
           userId,
 
+          // Snapshot thông tin người nhận
+          fulfillmentMethod: checkoutDto.fulfillmentMethod,
+
           receiverName: checkoutDto.receiverName,
+
           receiverPhone: checkoutDto.receiverPhone,
-          deliveryAddress: checkoutDto.deliveryAddress,
+
+          deliveryAddress,
+          deliveryLatitude,
+          deliveryLongitude,
+          deliveryDistanceKm,
+          deliveryBaseFee,
+          deliveryDiscountAmount,
+          deliveryFee,
+
+          // Ghi chú của khách cho đơn hàng
           note: checkoutDto.note,
 
           subtotal,
+
           discountAmount,
+
           loyaltyDiscountAmount,
+
           totalPrice,
-          
+
           voucherId,
+
           voucherCode,
-          
+
           loyaltyPointsUsed,
+
+          payment: {
+            create: {
+              method: checkoutDto.paymentMethod,
+              amount: totalPrice,
+            },
+          },
+
+          appliedVouchers: {
+            create: appliedVouchers.map((appliedVoucher) => ({
+              voucherId: appliedVoucher.voucherId,
+              code: appliedVoucher.code,
+              discountAmount: appliedVoucher.discountAmount,
+            })),
+          },
 
           items: {
             create: calculatedItems.map(
-              ({
-                item,
-                variantPrice,
-                unitPrice,
-                lineTotal,
-              }) => ({
+              ({ item, variantPrice, unitPrice, lineTotal }) => ({
                 productId: item.productId,
+
                 variantId: item.variantId,
 
-                // Snapshot thông tin sản phẩm tại thời điểm đặt hàng
+                // Snapshot để lịch sử đơn không bị thay đổi về sau
                 productName: item.product.name,
+
                 size: item.variant.size,
+
                 variantPrice,
+
                 quantity: item.quantity,
+
                 unitPrice,
+
                 lineTotal,
 
                 toppings: {
-                  create: item.toppings.map(
-                    (itemTopping) => ({
-                      toppingId:
-                        itemTopping.toppingId,
+                  create: item.toppings.map((itemTopping) => ({
+                    toppingId: itemTopping.toppingId,
 
-                      // Snapshot topping để lịch sử đơn không thay đổi
-                      toppingName:
-                        itemTopping.topping.name,
-                      toppingPrice:
-                        itemTopping.topping.price,
-                    }),
-                  ),
+                    // Snapshot topping tại thời điểm mua
+                    toppingName: itemTopping.topping.name,
+
+                    toppingPrice: itemTopping.topping.price,
+                  })),
                 },
               }),
             ),
@@ -290,6 +657,8 @@ export class OrdersService {
 
         include: {
           voucher: true,
+          appliedVouchers: { include: { voucher: true } },
+          payment: true,
           items: {
             include: {
               toppings: true,
@@ -298,26 +667,26 @@ export class OrdersService {
         },
       });
 
-      if (voucherId !== undefined) {
-        // Chỉ tăng lượt dùng khi Order đã tạo thành công
-        await tx.voucher.update({
-          where: {
-            id: voucherId,
-          },
-          data: {
-            usedCount: {
-              increment: 1,
-            },
-          },
-        });
+      if (voucherIds.length > 0) {
+        // Tăng lượt dùng cho toàn bộ voucher DB đã áp dụng.
+        await Promise.all(
+          voucherIds.map((id) =>
+            tx.voucher.update({
+              where: { id },
+              data: {
+                usedCount: {
+                  increment: 1,
+                },
+              },
+            }),
+          ),
+        );
       }
 
-      // Checkout thành công thì xóa toàn bộ item khỏi Cart
-      await tx.cartItem.deleteMany({
-        where: {
-          cartId: cart.id,
-        },
-      });
+      /*
+       * Không xóa CartItem sau checkout.
+       * Giỏ hàng được giữ nguyên để khách có thể mua lại món cũ.
+       */
 
       return order;
     });
@@ -334,6 +703,8 @@ export class OrdersService {
         userId,
       },
       include: {
+        payment: true,
+        appliedVouchers: { include: { voucher: true } },
         items: {
           include: {
             toppings: true,
@@ -347,16 +718,15 @@ export class OrdersService {
   }
 
   // User chỉ xem chi tiết Order thuộc tài khoản của mình
-  async findMyOrder(
-    userId: number,
-    orderId: number,
-  ) {
+  async findMyOrder(userId: number, orderId: number) {
     const order = await this.prisma.order.findFirst({
       where: {
         id: orderId,
         userId,
       },
       include: {
+        payment: true,
+        appliedVouchers: { include: { voucher: true } },
         items: {
           include: {
             toppings: true,
@@ -366,9 +736,7 @@ export class OrdersService {
     });
 
     if (!order) {
-      throw new NotFoundException(
-        'Không tìm thấy đơn hàng',
-      );
+      throw new NotFoundException('Không tìm thấy đơn hàng');
     }
 
     return order;
@@ -389,7 +757,7 @@ export class OrdersService {
             fullName: true,
           },
         },
-  
+
         voucher: {
           select: {
             id: true,
@@ -398,16 +766,16 @@ export class OrdersService {
             discountValue: true,
           },
         },
-  
+
         payment: true,
-  
+
         items: {
           include: {
             toppings: true,
           },
         },
       },
-  
+
       orderBy: {
         createdAt: 'desc',
       },
@@ -416,54 +784,48 @@ export class OrdersService {
 
   // ADMIN/STAFF xem chi tiết một đơn hàng
   async findOne(id: number) {
-    const order =
-      await this.prisma.order.findUnique({
-        where: {
-          id,
-        },
-  
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              fullName: true,
-            },
-          },
-  
-          voucher: {
-            select: {
-              id: true,
-              code: true,
-              discountType: true,
-              discountValue: true,
-            },
-          },
-  
-          payment: true,
-  
-          items: {
-            include: {
-              toppings: true,
-            },
+    const order = await this.prisma.order.findUnique({
+      where: {
+        id,
+      },
+
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
           },
         },
-      });
-  
+
+        voucher: {
+          select: {
+            id: true,
+            code: true,
+            discountType: true,
+            discountValue: true,
+          },
+        },
+
+        payment: true,
+
+        items: {
+          include: {
+            toppings: true,
+          },
+        },
+      },
+    });
+
     if (!order) {
-      throw new NotFoundException(
-        'Không tìm thấy đơn hàng',
-      );
+      throw new NotFoundException('Không tìm thấy đơn hàng');
     }
-  
+
     return order;
   }
 
   // ADMIN/STAFF cập nhật trạng thái đơn hàng
-  async updateStatus(
-    id: number,
-    status: string,
-  ) {
+  async updateStatus(id: number, status: string) {
     const order = await this.prisma.order.findUnique({
       where: {
         id,
@@ -471,40 +833,26 @@ export class OrdersService {
     });
 
     if (!order) {
-      throw new NotFoundException(
-        'Không tìm thấy đơn hàng',
-      );
+      throw new NotFoundException('Không tìm thấy đơn hàng');
     }
 
     // COMPLETED và CANCELLED là trạng thái cuối
-    if (
-      order.status === 'COMPLETED' ||
-      order.status === 'CANCELLED'
-    ) {
+    if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new BadRequestException(
         'Không thể thay đổi trạng thái của đơn hàng đã hoàn tất hoặc đã hủy',
       );
     }
 
     // Kiểm soát thứ tự xử lý đơn hàng
-    const allowedTransitions: Record<
-      string,
-      string[]
-    > = {
-      PENDING: [
-        'CONFIRMED',
-        'CANCELLED',
-      ],
-      CONFIRMED: [
-        'PREPARING',
-        'CANCELLED',
-      ],
-      PREPARING: ['DELIVERING'],
+    const allowedTransitions: Record<string, string[]> = {
+      PENDING: ['CONFIRMED', 'CANCELLED'],
+      CONFIRMED: ['PREPARING', 'CANCELLED'],
+      PREPARING:
+        order.fulfillmentMethod === 'PICKUP' ? ['COMPLETED'] : ['DELIVERING'],
       DELIVERING: ['COMPLETED'],
     };
 
-    const allowedStatuses =
-      allowedTransitions[order.status] ?? [];
+    const allowedStatuses = allowedTransitions[order.status] ?? [];
 
     if (!allowedStatuses.includes(status)) {
       throw new BadRequestException(
@@ -519,91 +867,68 @@ export class OrdersService {
           id,
         },
         data: {
-          status: status as any,
+          status: status as OrderStatus,
         },
       });
     }
 
     // Hoàn tất đơn và cộng điểm trong cùng transaction
-    return this.prisma.$transaction(
-      async (tx) => {
-        const currentOrder =
-          await tx.order.findUnique({
-            where: {
-              id,
-            },
+    return this.prisma.$transaction(async (tx) => {
+      const currentOrder = await tx.order.findUnique({
+        where: {
+          id,
+        },
+        include: {
+          user: {
             include: {
-              user: {
-                include: {
-                  role: true,
-                },
-              },
+              role: true,
             },
-          });
+          },
+        },
+      });
 
-        if (!currentOrder) {
-          throw new NotFoundException(
-            'Không tìm thấy đơn hàng',
-          );
-        }
+      if (!currentOrder) {
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      }
 
-        // Chỉ USER được tích điểm
-        const canEarnPoints =
-          currentOrder.user.role.name ===
-          'USER';
+      // Chỉ USER được tích điểm
+      const canEarnPoints = currentOrder.user.role.name === 'USER';
 
-        // Điểm tính trên số tiền thực trả cuối cùng
-        const paidAmount =
-          Number(
-            currentOrder.totalPrice,
-          );
+      // Điểm tính trên số tiền thực trả cuối cùng
+      const paidAmount = Number(currentOrder.totalPrice);
 
-        // Mỗi 1.000đ = 10 điểm
-        const earnedPoints =
-          canEarnPoints
-            ? Math.floor(
-                paidAmount / 1000,
-              ) * 10
-            : 0;
+      // Mỗi 1.000đ = 10 điểm
+      const earnedPoints = canEarnPoints
+        ? Math.floor(paidAmount / 1000) * 10
+        : 0;
 
-        const updatedOrder =
-          await tx.order.update({
-            where: {
-              id,
+      const updatedOrder = await tx.order.update({
+        where: {
+          id,
+        },
+        data: {
+          status: 'COMPLETED',
+
+          loyaltyPointsEarned: earnedPoints,
+
+          loyaltyPointsGrantedAt: canEarnPoints ? new Date() : null,
+        },
+      });
+
+      if (canEarnPoints && earnedPoints > 0) {
+        await tx.user.update({
+          where: {
+            id: currentOrder.userId,
+          },
+          data: {
+            loyaltyPoints: {
+              increment: earnedPoints,
             },
-            data: {
-              status: 'COMPLETED',
+          },
+        });
+      }
 
-              loyaltyPointsEarned:
-                earnedPoints,
-
-              loyaltyPointsGrantedAt:
-                canEarnPoints
-                  ? new Date()
-                  : null,
-            },
-          });
-
-        if (
-          canEarnPoints &&
-          earnedPoints > 0
-        ) {
-          await tx.user.update({
-            where: {
-              id:
-                currentOrder.userId,
-            },
-            data: {
-              loyaltyPoints: {
-                increment:
-                  earnedPoints,
-              },
-            },
-          });
-        }
-
-        return updatedOrder;
-      },
-    );
+      return updatedOrder;
+    });
   }
 }

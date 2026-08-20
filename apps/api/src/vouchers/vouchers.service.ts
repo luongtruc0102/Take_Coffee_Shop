@@ -111,6 +111,109 @@ export class VouchersService {
     ];
   }
 
+  async findAvailableForCheckout(
+    userId: number,
+    subtotal: number,
+  ) {
+    if (!Number.isFinite(subtotal) || subtotal < 0) {
+      throw new BadRequestException(
+        'Giá trị đơn hàng không hợp lệ',
+      );
+    }
+
+    const now = new Date();
+
+    const [user, vouchers] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { role: true },
+      }),
+      this.prisma.voucher.findMany({
+        where: {
+          isActive: true,
+          startAt: { lte: now },
+          endAt: { gte: now },
+          OR: [
+            { usageLimit: null },
+            { usedCount: { lt: this.prisma.voucher.fields.usageLimit } },
+          ],
+        },
+        orderBy: [
+          { minOrderValue: 'asc' },
+          { createdAt: 'desc' },
+        ],
+      }),
+    ]);
+
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+
+    const availableVouchers = vouchers.map((voucher) => {
+      const minOrderValue =
+        voucher.minOrderValue === null
+          ? 0
+          : Number(voucher.minOrderValue);
+      const canUse = subtotal >= minOrderValue;
+
+      let discountAmount = 0;
+
+      if (canUse) {
+        discountAmount =
+          voucher.discountType === 'PERCENT'
+            ? (subtotal * Number(voucher.discountValue)) / 100
+            : Number(voucher.discountValue);
+
+        if (voucher.maxDiscount !== null) {
+          discountAmount = Math.min(
+            discountAmount,
+            Number(voucher.maxDiscount),
+          );
+        }
+
+        discountAmount = Math.min(discountAmount, subtotal);
+      }
+
+      return {
+        ...voucher,
+        isSystemVoucher: false,
+        canUse,
+        unavailableReason: canUse
+          ? null
+          : `Đơn tối thiểu ${minOrderValue.toLocaleString('vi-VN')}đ`,
+        discountAmount,
+      };
+    });
+
+    if (user.role.name !== 'STAFF') {
+      return availableVouchers;
+    }
+
+    return [
+      {
+        id: -1,
+        code: 'NHANVIEN',
+        description: 'Giảm 20% cho nhân viên',
+        discountType: 'PERCENT' as const,
+        discountValue: 20,
+        minOrderValue: null,
+        maxDiscount: null,
+        usageLimit: null,
+        usedCount: 0,
+        startAt: null,
+        endAt: null,
+        isActive: true,
+        createdAt: null,
+        updatedAt: null,
+        isSystemVoucher: true,
+        canUse: true,
+        unavailableReason: null,
+        discountAmount: subtotal * 0.2,
+      },
+      ...availableVouchers,
+    ];
+  }
+
   // Tìm voucher theo id
   async findOne(id: number) {
     const voucher = await this.prisma.voucher.findUnique({

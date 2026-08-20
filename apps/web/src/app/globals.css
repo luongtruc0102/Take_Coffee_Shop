@@ -14,10 +14,6 @@ html {
   scrollbar-gutter: stable;
 }
 
-/* =========================
-   RECHARTS
-   ========================= */
-
 /* Không hiển thị outline khi click/focus biểu đồ */
 .recharts-wrapper,
 .recharts-wrapper *,
@@ -51,4 +47,14 @@ input[type='number']::-webkit-outer-spin-button {
 input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* Ẩn crollbar */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

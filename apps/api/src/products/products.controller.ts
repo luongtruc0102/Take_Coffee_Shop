@@ -22,7 +22,6 @@ export class ProductsController {
   // ADMIN xem toàn bộ sản phẩm kể cả sản phẩm đã khóa
   @Roles('ADMIN')
   @Get('admin/all')
-  @Get(':id')
   findAllForAdmin() {
     return this.productsService.findAllForAdmin();
   }

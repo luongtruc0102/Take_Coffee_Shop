@@ -70,6 +70,7 @@ function formatDate(
 
 function getNextStatuses(
   status: OrderStatus,
+  fulfillmentMethod: Order['fulfillmentMethod'],
 ): OrderStatus[] {
   switch (status) {
     case 'PENDING':
@@ -85,7 +86,9 @@ function getNextStatuses(
       ];
 
     case 'PREPARING':
-      return ['DELIVERING'];
+      return fulfillmentMethod === 'PICKUP'
+        ? ['COMPLETED']
+        : ['DELIVERING'];
 
     case 'DELIVERING':
       return ['COMPLETED'];
@@ -107,7 +110,7 @@ export default function OrderDetailModal({
   }
 
   const nextStatuses =
-    getNextStatuses(order.status);
+    getNextStatuses(order.status, order.fulfillmentMethod);
 
   const paymentMethod =
     order.payment?.method ===
@@ -172,7 +175,9 @@ export default function OrderDetailModal({
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-[#E9E1D8] bg-[#FAF8F5] p-5">
               <h4 className="font-semibold text-[#1F1B18]">
-                Thông tin nhận hàng
+                {order.fulfillmentMethod === 'PICKUP'
+                  ? 'Thông tin nhận tại quán'
+                  : 'Thông tin giao hàng'}
               </h4>
 
               <div className="mt-4 space-y-3 text-sm">
@@ -222,7 +227,9 @@ export default function OrderDetailModal({
 
                   <div>
                     <p className="text-xs text-[#8A817B]">
-                      Địa chỉ
+                      {order.fulfillmentMethod === 'PICKUP'
+                        ? 'Địa chỉ quán'
+                        : 'Địa chỉ giao hàng'}
                     </p>
 
                     <p className="font-medium leading-6 text-[#1F1B18]">

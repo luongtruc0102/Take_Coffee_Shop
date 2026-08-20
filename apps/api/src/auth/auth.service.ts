@@ -142,6 +142,9 @@ export class AuthService {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      phone: user.phone,
+      address: user.address,
+      loyaltyPoints: user.loyaltyPoints,
       role: user.role.name,
       createdAt: user.createdAt,
     };

@@ -84,3 +84,9 @@ export type UpdateVoucherInput = {
   startAt?: string;
   endAt?: string;
 };
+
+export type CheckoutVoucher = Voucher & {
+  canUse: boolean;
+  unavailableReason: string | null;
+  discountAmount: number;
+};

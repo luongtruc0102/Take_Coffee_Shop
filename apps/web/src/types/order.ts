@@ -10,6 +10,10 @@ export type PaymentMethod =
   | 'COD'
   | 'BANK_TRANSFER';
 
+export type FulfillmentMethod =
+  | 'DELIVERY'
+  | 'PICKUP';
+
 export type PaymentStatus =
   | 'PENDING'
   | 'PAID'
@@ -106,9 +110,16 @@ export type Order = {
     | string
     | null;
 
+  fulfillmentMethod: FulfillmentMethod;
   receiverName: string;
   receiverPhone: string;
   deliveryAddress: string;
+  deliveryLatitude: number | string | null;
+  deliveryLongitude: number | string | null;
+  deliveryDistanceKm: number | string;
+  deliveryBaseFee: number | string;
+  deliveryDiscountAmount: number | string;
+  deliveryFee: number | string;
 
   note: string | null;
 
@@ -119,6 +130,14 @@ export type Order = {
 
   voucher:
     OrderVoucher | null;
+
+  appliedVouchers?: Array<{
+    orderId: number;
+    voucherId: number;
+    code: string;
+    discountAmount: number | string;
+    voucher?: OrderVoucher;
+  }>;
 
   voucherCode:
     string | null;

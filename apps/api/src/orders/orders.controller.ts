@@ -17,6 +17,7 @@ import { OrdersService } from './orders.service';
 import { Patch } from '@nestjs/common';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { SearchQueryDto } from '../common/dto/search-query.dto';
 
 interface JwtUser {
   sub: number;
@@ -72,11 +73,20 @@ export class OrdersController {
     return this.ordersService.findMyOrders(request.user.sub);
   }
 
+  // User tự hủy đơn của mình khi đơn vẫn đang chờ cửa hàng xác nhận
+  @Patch(':id/cancel')
+  cancelMyOrder(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.ordersService.cancelMyOrder(request.user.sub, id);
+  }
+
   // ADMIN và STAFF xem toàn bộ đơn hàng
   @Roles('ADMIN', 'STAFF')
   @Get('management/all')
-  findAll() {
-    return this.ordersService.findAll();
+  findAll(@Query() query: SearchQueryDto) {
+    return this.ordersService.findAll(query.q);
   }
 
   // Lấy chi tiết một đơn nhưng chỉ khi nó thuộc user hiện tại

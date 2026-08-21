@@ -195,7 +195,7 @@ export default function StaffFormModal({
 
             <p className="mt-1 text-sm text-[#78866B]">
               Tạo tài khoản nhân viên
-              mới cho Take Coffee.
+              mới cho Kippora.
             </p>
           </div>
 

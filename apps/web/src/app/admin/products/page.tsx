@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Eye,
   LockKeyhole,
@@ -9,7 +9,8 @@ import {
   Search,
   UnlockKeyhole,
   Coffee,
-  ChevronDown
+  ChevronDown,
+  LoaderCircle,
 } from 'lucide-react';
 
 import {
@@ -23,12 +24,14 @@ import type {
 
 import ProductFormModal from '@/components/admin/product-form-modal';
 import ProductDetailModal from '@/components/admin/product-detail-modal';
-import { normalizeText, matchesSearch } from '@/utils/text.util';
 
 export default function AdminProductsPage() {
   
 
   const [products, setProducts] =
+    useState<Product[]>([]);
+
+  const [allProducts, setAllProducts] =
     useState<Product[]>([]);
 
   const [loading, setLoading] =
@@ -42,7 +45,15 @@ export default function AdminProductsPage() {
 
   const [search, setSearch] =
     useState('');
-  const keyword = normalizeText(search);
+
+  const [debouncedSearch, setDebouncedSearch] =
+    useState('');
+
+  const [searching, setSearching] =
+    useState(false);
+
+  const [searchError, setSearchError] =
+    useState('');
 
   const [
     selectedCategory,
@@ -69,7 +80,7 @@ export default function AdminProductsPage() {
     setDetailProduct,
   ] = useState<Product | null>(null);
 
-  async function loadProducts() {
+  const loadProducts = useCallback(async (query = '') => {
     try {
       setError('');
   
@@ -82,11 +93,16 @@ export default function AdminProductsPage() {
         );
       }
   
-      const data =
-        await getAdminProducts(
-          accessToken,
-        );
-  
+      const allData =
+        await getAdminProducts(accessToken);
+      const data = query
+        ? await getAdminProducts(
+            accessToken,
+            query,
+          )
+        : allData;
+
+      setAllProducts(allData);
       setProducts(data);
     } catch (error) {
       setError(
@@ -95,7 +111,7 @@ export default function AdminProductsPage() {
           : 'Không thể tải sản phẩm',
       );
     }
-  }
+  }, []);
 
   useEffect(() => {
     async function initialLoad() {
@@ -109,7 +125,83 @@ export default function AdminProductsPage() {
     }
   
     initialLoad();
-  }, []);
+  }, [loadProducts]);
+
+  useEffect(() => {
+    const timeoutId =
+      window.setTimeout(() => {
+        setDebouncedSearch(
+          search.trim(),
+        );
+      }, 300);
+
+    return () =>
+      window.clearTimeout(timeoutId);
+  }, [search]);
+
+  useEffect(() => {
+    if (loading || !debouncedSearch) {
+      return;
+    }
+
+    const controller =
+      new AbortController();
+
+    async function searchProducts() {
+      try {
+        setSearching(true);
+        setSearchError('');
+
+        const accessToken =
+          localStorage.getItem(
+            'accessToken',
+          );
+
+        if (!accessToken) {
+          throw new Error(
+            'Không tìm thấy phiên đăng nhập.',
+          );
+        }
+
+        const data =
+          await getAdminProducts(
+            accessToken,
+            debouncedSearch,
+            controller.signal,
+          );
+
+        setProducts(data);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setSearchError(
+          error instanceof Error
+            ? error.message
+            : 'Không thể tìm sản phẩm',
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setSearching(false);
+        }
+      }
+    }
+
+    void searchProducts();
+
+    return () => controller.abort();
+  }, [debouncedSearch, loading]);
+
+  const visibleProducts =
+    debouncedSearch
+      ? products
+      : allProducts;
+  const isSearching =
+    Boolean(debouncedSearch) && searching;
+  const displayedError =
+    error ||
+    (debouncedSearch ? searchError : '');
 
   const categories = useMemo(() => {
     const categoryMap = new Map<
@@ -117,7 +209,7 @@ export default function AdminProductsPage() {
       string
     >();
 
-    products.forEach((product) => {
+    allProducts.forEach((product) => {
       categoryMap.set(
         product.category.id,
         product.category.name,
@@ -130,22 +222,12 @@ export default function AdminProductsPage() {
       id,
       name,
     }));
-  }, [products]);
+  }, [allProducts]);
 
   const filteredProducts =
   useMemo(() => {
-    return products.filter(
+    return visibleProducts.filter(
       (product) => {
-        const matchesKeyword =
-          matchesSearch(
-            product.name,
-            search,
-          ) ||
-          matchesSearch(
-            product.description ?? '',
-            search,
-          );
-
         const matchesCategory =
           selectedCategory === 'ALL' ||
           product.categoryId ===
@@ -163,15 +245,13 @@ export default function AdminProductsPage() {
             !product.isActive);
 
         return (
-          matchesKeyword &&
           matchesCategory &&
           matchesStatus
         );
       },
     );
   }, [
-    products,
-    search,
+    visibleProducts,
     selectedCategory,
     selectedStatus,
   ]);
@@ -211,18 +291,21 @@ export default function AdminProductsPage() {
           !product.isActive,
         );
 
+      const updateStatusInList =
+        (current: Product[]) =>
+          current.map((item) =>
+            item.id === product.id
+              ? {
+                  ...item,
+                  isActive:
+                    updated.isActive,
+                }
+              : item,
+          );
+
       // Cập nhật local state để không phải reload cả danh sách
-      setProducts((current) =>
-        current.map((item) =>
-          item.id === product.id
-            ? {
-                ...item,
-                isActive:
-                  updated.isActive,
-              }
-            : item,
-        ),
-      );
+      setProducts(updateStatusInList);
+      setAllProducts(updateStatusInList);
     } catch (error) {
       setError(
         error instanceof Error
@@ -260,9 +343,9 @@ export default function AdminProductsPage() {
         </button>
       </div>
 
-      {error && (
+      {displayedError && (
         <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
+          {displayedError}
         </div>
       )}
 
@@ -274,15 +357,24 @@ export default function AdminProductsPage() {
               className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8A817B]"
             />
 
+            {isSearching && (
+              <LoaderCircle
+                size={18}
+                className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-[#C9894B]"
+              />
+            )}
+
             <input
               value={search}
+              type="search"
               onChange={(event) =>
                 setSearch(
                   event.target.value,
                 )
               }
               placeholder="Tìm sản phẩm..."
-              className="h-11 w-full rounded-xl border border-[#E9E1D8] bg-[#FAF8F5] pl-10 pr-4 text-sm text-[#1F1B18] outline-none transition focus:border-[#C9894B]"
+              aria-busy={isSearching}
+              className="h-11 w-full rounded-xl border border-[#E9E1D8] bg-[#FAF8F5] pl-10 pr-10 text-sm text-[#1F1B18] outline-none transition focus:border-[#C9894B]"
             />
           </div>
 
@@ -595,7 +687,7 @@ export default function AdminProductsPage() {
           <span className="font-semibold text-[#1F1B18]">
             {filteredProducts.length}
           </span>{' '}
-          / {products.length} sản phẩm
+          / {allProducts.length} sản phẩm
         </p>
       )}
 
@@ -613,60 +705,8 @@ export default function AdminProductsPage() {
             setFormOpen(false);
             setEditingProduct(null);
           }}
-          onSaved={(savedProduct) => {
-            setProducts((current) => {
-              const exists =
-                current.some(
-                  (product) =>
-                    product.id ===
-                    savedProduct.id,
-                );
-
-              if (exists) {
-                // Cập nhật sản phẩm vừa sửa ngay trên table
-                return current.map(
-                  (product) =>
-                    product.id ===
-                    savedProduct.id
-                      ? {
-                          ...product,
-                          ...savedProduct,
-
-                          variants:
-                            savedProduct
-                              .variants ??
-                            product
-                              .variants,
-
-                          toppings:
-                            savedProduct
-                              .toppings ??
-                            product
-                              .toppings,
-                        }
-                      : product,
-                );
-              }
-
-              // Sản phẩm mới đưa lên đầu danh sách
-              return [
-                {
-                  ...savedProduct,
-
-                  variants:
-                    savedProduct
-                      .variants ??
-                    [],
-
-                  toppings:
-                    savedProduct
-                      .toppings ??
-                    [],
-                },
-
-                ...current,
-              ];
-            });
+          onSaved={() => {
+            void loadProducts(debouncedSearch);
           }}
         />
 
@@ -677,7 +717,7 @@ export default function AdminProductsPage() {
           setDetailProduct(null)
         }
         onSaved={async () => {
-          await loadProducts();
+          await loadProducts(debouncedSearch);
         }}
       />
     </div>

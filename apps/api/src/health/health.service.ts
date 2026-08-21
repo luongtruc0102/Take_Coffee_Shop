@@ -13,7 +13,7 @@ export class HealthService {
     // Trả trạng thái hệ thống cho GET /health
     return {
       status: 'ok',
-      service: 'Take Coffee Shop API',
+      service: 'Kippora API',
       database: 'connected',
       timestamp: new Date().toISOString(),
     };

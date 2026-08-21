@@ -6,7 +6,9 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
+import { SearchQueryDto } from '../common/dto/search-query.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ToppingsService } from './toppings.service';
@@ -65,7 +67,7 @@ export class ToppingsController {
   // ToppingsController
   @Roles('ADMIN')
   @Get('admin/all')
-  findAllForAdmin() {
-    return this.toppingsService.findAllForAdmin();
+  findAllForAdmin(@Query() query: SearchQueryDto) {
+    return this.toppingsService.findAllForAdmin(query.q);
   }
 }

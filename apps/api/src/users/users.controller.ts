@@ -6,7 +6,9 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
+import { SearchQueryDto } from '../common/dto/search-query.dto';
 
 import {
   Roles,
@@ -34,8 +36,8 @@ export class UsersController {
   // ADMIN xem danh sách tài khoản
   @Roles('ADMIN')
   @Get()
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query() query: SearchQueryDto) {
+    return this.usersService.findAll(query.q);
   }
 
   // ADMIN tạo tài khoản nhân viên

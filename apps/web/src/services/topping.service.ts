@@ -30,13 +30,21 @@ function getHeaders(
 // ADMIN lấy tất cả topping kể cả đã khóa
 export async function getAdminToppings(
   accessToken: string,
+  query = '',
+  signal?: AbortSignal,
 ): Promise<Topping[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set('q', query.trim());
+
+  const url = `${getApiUrl()}/toppings/admin/all?${params.toString()}`;
+
   const response = await fetch(
-    `${getApiUrl()}/toppings/admin/all`,
+    url,
     {
       headers:
         getHeaders(accessToken),
       cache: 'no-store',
+      signal,
     },
   );
 

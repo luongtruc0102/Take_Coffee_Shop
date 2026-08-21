@@ -51,14 +51,22 @@ export async function getCategories(): Promise<Category[]> {
 // ADMIN: lấy tất cả danh mục kể cả đã khóa
 export async function getAdminCategories(
   accessToken: string,
+  query = '',
+  signal?: AbortSignal,
 ): Promise<Category[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set('q', query.trim());
+
+  const url = `${getApiUrl()}/categories/admin/all?${params.toString()}`;
+
   const response = await fetch(
-    `${getApiUrl()}/categories/admin/all`,
+    url,
     {
       headers:
         getHeaders(accessToken),
 
       cache: 'no-store',
+      signal,
     },
   );
 

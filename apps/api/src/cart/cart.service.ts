@@ -11,7 +11,7 @@ import {
   export class CartService {
     constructor(private readonly prisma: PrismaService) {}
   
-    // Lấy giỏ hàng hiện tại hoặc tự tạo nếu user chưa có giỏ hàng
+    // Tìm Cart theo userId hoặc tự tạo một Cart rỗng cho user mới.
     private async getOrCreateCart(userId: number) {
       return this.prisma.cart.upsert({
         where: {
@@ -24,6 +24,8 @@ import {
       });
     }
   
+    // Lấy giỏ đầy đủ, nạp product/variant/topping và tính lại mọi mức giá
+    // từ database để client không thể tự sửa giá.
     async getCart(userId: number) {
       const cart = await this.getOrCreateCart(userId);
   
@@ -88,6 +90,8 @@ import {
       };
     }
   
+    // Kiểm tra sản phẩm, size, topping rồi tăng dòng trùng cấu hình hoặc tạo
+    // dòng mới; response luôn kèm addedItemId cho frontend chọn chính xác.
     async addItem(userId: number, addCartItemDto: AddCartItemDto) {
       const {
         productId,
@@ -182,7 +186,7 @@ import {
   
       // Nếu cùng món + size + topping thì chỉ tăng số lượng
       if (existingItem) {
-        await this.prisma.cartItem.update({
+        const updatedItem = await this.prisma.cartItem.update({
           where: {
             id: existingItem.id,
           },
@@ -193,11 +197,16 @@ import {
           },
         });
   
-        return this.getCart(userId);
+        const updatedCart = await this.getCart(userId);
+
+        return {
+          ...updatedCart,
+          addedItemId: updatedItem.id,
+        };
       }
   
       // Nếu cấu hình món khác thì tạo CartItem mới
-      await this.prisma.cartItem.create({
+      const createdItem = await this.prisma.cartItem.create({
         data: {
           cartId: cart.id,
           productId,
@@ -212,9 +221,16 @@ import {
         },
       });
   
-      return this.getCart(userId);
+      const updatedCart = await this.getCart(userId);
+
+      return {
+        ...updatedCart,
+        addedItemId: createdItem.id,
+      };
     }
   
+    // Đặt quantity mới cho một CartItem sau khi xác minh quyền sở hữu,
+    // sau đó trả lại giỏ đã tính tổng tiền mới.
     async updateItem(
       userId: number,
       itemId: number,
@@ -246,6 +262,8 @@ import {
       return this.getCart(userId);
     }
   
+    // Xóa một CartItem sau khi xác minh nó thuộc Cart của user hiện tại,
+    // sau đó trả lại giỏ mới nhất.
     async removeItem(userId: number, itemId: number) {
       // Không cho user xóa CartItem của tài khoản khác
       const item = await this.prisma.cartItem.findFirst({
@@ -271,6 +289,8 @@ import {
       return this.getCart(userId);
     }
   
+    // Xóa mọi CartItem của user nhưng giữ Cart để tiếp tục tái sử dụng
+    // và không làm thay đổi nghiệp vụ checkout.
     async clearCart(userId: number) {
       const cart = await this.getOrCreateCart(userId);
   

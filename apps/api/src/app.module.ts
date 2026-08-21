@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
+import { FuzzySearchModule } from './common/fuzzy-search/fuzzy-search.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -24,6 +25,9 @@ import { UploadsModule } from './uploads/uploads.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+
+    // Fuzzy search dùng chung: hỗ trợ tiếng Việt, sai chính tả và nhiều trường
+    FuzzySearchModule,
 
     // Kết nối database và cung cấp PrismaService cho toàn hệ thống
     PrismaModule,

@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -13,7 +14,6 @@ import {
     Plus,
     Search,
     UnlockKeyhole,
-    X
   } from 'lucide-react';
 
   import {
@@ -22,7 +22,7 @@ import {
     updateUserStatus,
   } from '@/services/user.service';
 
-import { matchesSearch } from '@/utils/text.util';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import type { AdminUser } from '@/types/user';
 import StaffFormModal from '@/components/admin/staff-form-modal';
 import UserDetailModal from '@/components/admin/user-detail-modal';
@@ -39,6 +39,8 @@ export default function AdminUsersPage() {
 
   const [search, setSearch] =
     useState('');
+  const debouncedSearch = useDebouncedValue(search);
+
 
     const [
         staffFormOpen,
@@ -69,42 +71,58 @@ export default function AdminUsersPage() {
     null,
   );
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  const loadUsers = useCallback(
+    async (query = '', signal?: AbortSignal) => {
+      await Promise.resolve();
 
-  async function loadUsers() {
-    try {
-      setLoading(true);
-      setError('');
+      try {
+        setLoading(true);
+        setError('');
 
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
+        const accessToken = localStorage.getItem('accessToken');
 
-      if (!accessToken) {
-        throw new Error(
-          'Không tìm thấy phiên đăng nhập.',
-        );
-      }
+        if (!accessToken) {
+          throw new Error('Không tìm thấy phiên đăng nhập.');
+        }
 
-      const data =
-        await getAdminUsers(
+        const data = await getAdminUsers(
           accessToken,
+          query,
+          signal,
         );
 
-      setUsers(data);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'Không thể tải người dùng',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+        setUsers(data);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'Không thể tải người dùng',
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const timeoutId = window.setTimeout(() => {
+      void loadUsers(debouncedSearch, controller.signal);
+    }, 0);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [debouncedSearch, loadUsers]);
 
   async function handleOpenUserDetail(
     userId: number,
@@ -143,20 +161,6 @@ export default function AdminUsersPage() {
     useMemo(() => {
       return users.filter(
         (user) => {
-            const matchesKeyword =
-                matchesSearch(
-                user.fullName ?? '',
-                search,
-                ) ||
-                matchesSearch(
-                user.email,
-                search,
-                ) ||
-                matchesSearch(
-                user.phone ?? '',
-                search,
-                );
-
           const matchesRole =
             selectedRole === 'ALL' ||
             user.role.name ===
@@ -173,7 +177,6 @@ export default function AdminUsersPage() {
               !user.isActive);
 
           return (
-            matchesKeyword &&
             matchesRole &&
             matchesStatus
           );
@@ -181,7 +184,6 @@ export default function AdminUsersPage() {
       );
     }, [
       users,
-      search,
       selectedRole,
       selectedStatus,
     ]);
@@ -615,12 +617,8 @@ export default function AdminUsersPage() {
         onClose={() =>
             setStaffFormOpen(false)
         }
-        onSaved={(createdUser) => {
-            // Thêm trực tiếp vào đầu bảng, không reload API
-            setUsers((current) => [
-            createdUser,
-            ...current,
-            ]);
+        onSaved={() => {
+          void loadUsers(debouncedSearch);
         }}
         />
     </div>

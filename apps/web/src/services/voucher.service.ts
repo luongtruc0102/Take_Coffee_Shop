@@ -32,14 +32,22 @@ import type {
   
   export async function getAdminVouchers(
     accessToken: string,
+    query = '',
+    signal?: AbortSignal,
   ): Promise<Voucher[]> {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set('q', query.trim());
+
+    const url = `${getApiUrl()}/vouchers?${params.toString()}`;
+
     const response = await fetch(
-      `${getApiUrl()}/vouchers`,
+      url,
       {
         headers:
           getHeaders(accessToken),
   
         cache: 'no-store',
+        signal,
       },
     );
   

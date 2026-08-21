@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -20,7 +21,7 @@ import {
   updateVoucherStatus,
 } from '@/services/voucher.service';
 
-import { matchesSearch } from '@/utils/text.util';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import type { Voucher } from '@/types/voucher';
 import VoucherFormModal from '@/components/admin/voucher-form-modal';
 
@@ -42,6 +43,8 @@ export default function AdminVouchersPage() {
 
   const [search, setSearch] =
     useState('');
+  const debouncedSearch = useDebouncedValue(search);
+
 
   const [
     selectedStatus,
@@ -75,42 +78,58 @@ export default function AdminVouchersPage() {
     null,
   );
 
-  useEffect(() => {
-    loadVouchers();
-  }, []);
+  const loadVouchers = useCallback(
+    async (query = '', signal?: AbortSignal) => {
+      await Promise.resolve();
 
-  async function loadVouchers() {
-    try {
-      setLoading(true);
-      setError('');
+      try {
+        setLoading(true);
+        setError('');
 
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
+        const accessToken = localStorage.getItem('accessToken');
 
-      if (!accessToken) {
-        throw new Error(
-          'Không tìm thấy phiên đăng nhập.',
-        );
-      }
+        if (!accessToken) {
+          throw new Error('Không tìm thấy phiên đăng nhập.');
+        }
 
-      const data =
-        await getAdminVouchers(
+        const data = await getAdminVouchers(
           accessToken,
+          query,
+          signal,
         );
 
-      setVouchers(data);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'Không thể tải voucher',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+        setVouchers(data);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'Không thể tải voucher',
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const timeoutId = window.setTimeout(() => {
+      void loadVouchers(debouncedSearch, controller.signal);
+    }, 0);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [debouncedSearch, loadVouchers]);
 
   const filteredVouchers =
   useMemo(() => {
@@ -119,12 +138,6 @@ export default function AdminVouchersPage() {
 
     return vouchers.filter(
       (voucher) => {
-        const matchesKeyword =
-          matchesSearch(
-            voucher.code,
-            search,
-          );
-
         const matchesStatus =
           selectedStatus ===
             'ALL' ||
@@ -173,15 +186,12 @@ export default function AdminVouchersPage() {
               })();
 
         return (
-          matchesKeyword &&
-          matchesStatus &&
-          matchesValidity
+          matchesStatus && matchesValidity
         );
       },
     );
   }, [
     vouchers,
-    search,
     selectedStatus,
     selectedValidity,
   ]);
@@ -729,30 +739,8 @@ export default function AdminVouchersPage() {
                 setFormOpen(false);
                 setEditingVoucher(null);
             }}
-            onSaved={(
-                savedVoucher,
-            ) => {
-                if (
-                editingVoucher
-                ) {
-                setVouchers(
-                    (current) =>
-                    current.map(
-                        (voucher) =>
-                        voucher.id ===
-                        savedVoucher.id
-                            ? savedVoucher
-                            : voucher,
-                    ),
-                );
-                } else {
-                                setVouchers(
-                    (current) => [
-                    savedVoucher,
-                    ...current,
-                    ],
-                );
-                }
+            onSaved={() => {
+              void loadVouchers(debouncedSearch);
             }}
         />  
     </div>

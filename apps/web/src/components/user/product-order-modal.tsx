@@ -28,6 +28,11 @@ import type {
   ProductVariant,
 } from '@/types/menu';
 
+import {
+  notifyCartUpdated,
+  rememberNewCartItem,
+} from '@/utils/cart.util';
+
 type Props = {
   open: boolean;
   product: Product | null;
@@ -71,6 +76,7 @@ export default function ProductOrderModal({
     setError,
   ] = useState('');
 
+  // Mỗi lần mở món mới, đặt lại size mặc định, topping và quantity cũ.
   useEffect(() => {
     if (
       !open ||
@@ -94,6 +100,8 @@ export default function ProductOrderModal({
     product,
   ]);
 
+  // Tính giá xem trước từ size + các topping đã chọn rồi nhân quantity;
+  // backend vẫn là nơi tính giá chính thức khi trả giỏ hàng.
   const totalPrice =
     useMemo(() => {
       if (
@@ -148,6 +156,7 @@ export default function ProductOrderModal({
     return null;
   }
 
+  // Hiển thị mọi giá tiền trong modal theo định dạng tiền Việt Nam.
   function formatCurrency(
     value:
       | number
@@ -166,6 +175,7 @@ export default function ProductOrderModal({
     );
   }
 
+  // Chuẩn hóa ảnh tương đối của backend thành URL có thể hiển thị.
   function getImageUrl(
     imageUrl:
       | string
@@ -203,6 +213,7 @@ export default function ProductOrderModal({
     }`;
   }
 
+  // Bật hoặc bỏ một topping trong lựa chọn của món hiện tại.
   function toggleTopping(
     toppingId: number,
   ) {
@@ -228,6 +239,7 @@ export default function ProductOrderModal({
       product.imageUrl,
     );
 
+    // Kiểm tra đăng nhập, thêm món qua backend rồi chuyển tới trang giỏ.
     async function handleAddToCart() {
       try {
         setError('');
@@ -275,7 +287,7 @@ export default function ProductOrderModal({
     
         setAdding(true);
     
-        await addCartItem(
+        const updatedCart = await addCartItem(
           accessToken,
           {
             productId:
@@ -290,6 +302,11 @@ export default function ProductOrderModal({
               selectedToppingIds,
           },
         );
+
+        // Backend trả đúng ID của dòng vừa tạo hoặc vừa tăng quantity.
+        rememberNewCartItem(updatedCart.addedItemId);
+
+        notifyCartUpdated(updatedCart);
     
         onClose();
     

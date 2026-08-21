@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -14,6 +15,7 @@ import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateProductStatusDto } from './dto/update-product-status.dto';
+import { SearchQueryDto } from '../common/dto/search-query.dto';
 
 @Controller('products')
 export class ProductsController {
@@ -22,8 +24,8 @@ export class ProductsController {
   // ADMIN xem toàn bộ sản phẩm kể cả sản phẩm đã khóa
   @Roles('ADMIN')
   @Get('admin/all')
-  findAllForAdmin() {
-    return this.productsService.findAllForAdmin();
+  findAllForAdmin(@Query() query: SearchQueryDto) {
+    return this.productsService.findAllForAdmin(query.q);
   }
 
   // Chỉ ADMIN được phép tạo sản phẩm mới
@@ -36,8 +38,8 @@ export class ProductsController {
   // API public để khách chưa đăng nhập vẫn xem được menu
   @Public()
   @Get()
-  findAll() {
-    return this.productsService.findAll();
+  findAll(@Query() query: SearchQueryDto) {
+    return this.productsService.findAll(query.q);
   }
 
   // ParseIntPipe đảm bảo id trên URL là số hợp lệ
@@ -89,5 +91,4 @@ export class ProductsController {
   ) {
     return this.productsService.removeTopping(productId, toppingId);
   }
-  
 }

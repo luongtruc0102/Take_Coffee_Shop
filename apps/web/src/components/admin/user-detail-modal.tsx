@@ -301,7 +301,7 @@ export default function UserDetailModal({
                       </p>
 
                       <p className="mt-1 text-sm leading-6 text-[#78866B]">
-                        Nhân viên Take Coffee
+                        Nhân viên Kippora
                         được sử dụng voucher
                         giảm 20% dành riêng
                         cho nhân viên.

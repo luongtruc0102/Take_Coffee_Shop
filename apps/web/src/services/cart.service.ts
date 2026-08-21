@@ -3,6 +3,7 @@ import type { Cart } from '@/types/cart';
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL;
 
+// Lấy URL backend dùng chung và báo lỗi cấu hình sớm cho mọi Cart API.
 function getApiUrl() {
   if (!API_URL) {
     throw new Error(
@@ -13,6 +14,7 @@ function getApiUrl() {
   return API_URL;
 }
 
+// Tạo bộ header JSON + JWT dùng chung cho các request giỏ hàng.
 function getHeaders(
   accessToken: string,
 ) {
@@ -32,10 +34,16 @@ export type AddCartItemInput = {
   toppingIds?: number[];
 };
 
+export type AddCartItemResult = Cart & {
+  // ID do backend trả về để frontend chọn đúng CartItem vừa thêm hoặc tăng.
+  addedItemId: number;
+};
+
+// Thêm món vào giỏ và nhận lại toàn bộ giỏ cùng ID dòng món vừa xử lý.
 export async function addCartItem(
   accessToken: string,
   input: AddCartItemInput,
-): Promise<Cart> {
+): Promise<AddCartItemResult> {
   const response = await fetch(
     `${getApiUrl()}/cart/items`,
     {
@@ -71,7 +79,7 @@ export type UpdateCartItemInput = {
   quantity: number;
 };
 
-// USER lấy giỏ hàng hiện tại
+// Lấy giỏ hàng hiện tại của user đang đăng nhập.
 export async function getCart(
   accessToken: string,
 ): Promise<Cart> {
@@ -98,7 +106,7 @@ export async function getCart(
   return data;
 }
 
-// USER cập nhật số lượng món
+// Đặt lại quantity của một CartItem và nhận giỏ đã được backend tính lại.
 export async function updateCartItem(
   accessToken: string,
   itemId: number,
@@ -135,7 +143,7 @@ export async function updateCartItem(
   return data;
 }
 
-// USER xóa một món khỏi giỏ hàng
+// Xóa một CartItem thuộc giỏ của user và nhận giỏ mới nhất.
 export async function removeCartItem(
   accessToken: string,
   itemId: number,
@@ -163,7 +171,7 @@ export async function removeCartItem(
   return data;
 }
 
-// USER xóa toàn bộ giỏ hàng
+// Xóa toàn bộ CartItem nhưng vẫn giữ bản ghi Cart của user.
 export async function clearCart(
   accessToken: string,
 ): Promise<{ message: string }> {

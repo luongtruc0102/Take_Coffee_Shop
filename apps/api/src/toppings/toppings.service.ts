@@ -4,12 +4,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { FuzzySearchService } from '../common/fuzzy-search/fuzzy-search.service';
 import { CreateToppingDto } from './dto/create-topping.dto';
 import { UpdateToppingDto } from './dto/update-topping.dto';
 
 @Injectable()
 export class ToppingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fuzzySearch: FuzzySearchService,
+  ) {}
 
   // Tạo topping mới
   async create(createToppingDto: CreateToppingDto) {
@@ -125,11 +129,22 @@ export class ToppingsService {
   }
 
   // ToppingsService
-  async findAllForAdmin() {
-    return this.prisma.topping.findMany({
+  async findAllForAdmin(query = '') {
+    const toppings = await this.prisma.topping.findMany({
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    return this.fuzzySearch.search(toppings, query, {
+      keys: [
+        { name: 'name', weight: 0.85 },
+        {
+          name: 'price',
+          weight: 0.15,
+          getFn: (topping) => topping.price.toString(),
+        },
+      ],
     });
   }
 }

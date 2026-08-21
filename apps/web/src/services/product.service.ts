@@ -32,14 +32,29 @@ import type {
   // ADMIN lấy tất cả sản phẩm kể cả đã khóa
   export async function getAdminProducts(
     accessToken: string,
+    query = '',
+    signal?: AbortSignal,
   ): Promise<Product[]> {
+    const searchParams =
+      new URLSearchParams();
+
+    if (query.trim()) {
+      searchParams.set(
+        'q',
+        query.trim(),
+      );
+    }
+
+    const queryString =
+      searchParams.toString();
     const response = await fetch(
-      `${getApiUrl()}/products/admin/all`,
+      `${getApiUrl()}/products/admin/all${queryString ? `?${queryString}` : ''}`,
       {
         headers:
           getHeaders(accessToken),
-  
+
         cache: 'no-store',
+        signal,
       },
     );
   

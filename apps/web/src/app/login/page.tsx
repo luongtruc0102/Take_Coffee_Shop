@@ -6,6 +6,7 @@ import {
   useSearchParams,
 } from 'next/navigation';
 import { login } from '@/services/auth.service';
+import BrandLogo from '@/components/brand/brand-logo';
 
 function LoginForm() {
   const router = useRouter();
@@ -82,12 +83,15 @@ function LoginForm() {
     <main className="flex min-h-screen items-center justify-center bg-[#FAF8F5] px-4">
       <div className="w-full max-w-md rounded-3xl border border-[#E9E1D8] bg-white p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-[#4A2C20]">
-            Take Coffee
-          </h1>
+          <BrandLogo
+            variant="stackedFull"
+            priority
+            sizes="190px"
+            className="mx-auto h-auto w-[190px]"
+          />
 
-          <p className="mt-2 text-sm text-[#78866B]">
-            Đăng nhập vào Take Coffee
+          <p className="mt-4 text-sm text-[#78866B]">
+            Đăng nhập vào Kippora
           </p>
         </div>
 

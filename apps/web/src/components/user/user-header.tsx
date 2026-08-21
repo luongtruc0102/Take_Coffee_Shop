@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  Coffee,
   LogIn,
   Menu,
   ShoppingCart,
@@ -19,6 +18,15 @@ import {
 import {
   usePathname,
 } from 'next/navigation';
+
+import BrandLogo from '@/components/brand/brand-logo';
+
+import { getCart } from '@/services/cart.service';
+
+import {
+  CART_UPDATED_EVENT,
+  getCartItemCount,
+} from '@/utils/cart.util';
 
 type CurrentUser = {
   id: number;
@@ -55,33 +63,100 @@ export default function UserHeader() {
       null,
     );
 
+  const [
+    cartItemCount,
+    setCartItemCount,
+  ] = useState(0);
+
+  // Khôi phục user, tải badge ban đầu và lắng nghe mọi thay đổi của giỏ.
   useEffect(() => {
-    const storedUser =
-      localStorage.getItem(
-        'user',
-      );
+    let active = true;
 
-    if (!storedUser) {
-      return;
+    // Nhận số dòng món từ event nội bộ do modal hoặc trang giỏ phát ra.
+    function handleCartUpdated(
+      event: Event,
+    ) {
+      const cartEvent =
+        event as CustomEvent<number>;
+      const nextCount =
+        Number(cartEvent.detail);
+
+      if (Number.isFinite(nextCount)) {
+        setCartItemCount(
+          Math.max(0, nextCount),
+        );
+      }
     }
 
-    try {
-      setUser(
-        JSON.parse(
-          storedUser,
-        ),
-      );
-    } catch {
-      localStorage.removeItem(
-        'user',
-      );
+    // Cập nhật badge ngay khi giỏ đổi mà không cần tải lại trang.
+    window.addEventListener(
+      CART_UPDATED_EVENT,
+      handleCartUpdated,
+    );
 
-      localStorage.removeItem(
-        'accessToken',
+    // Chạy sau khi component mount để chỉ đọc localStorage ở phía browser.
+    const timeoutId = window.setTimeout(() => {
+      const storedUser =
+        localStorage.getItem(
+          'user',
+        );
+
+      if (!storedUser) {
+        return;
+      }
+
+      try {
+        const parsedUser =
+          JSON.parse(
+            storedUser,
+          ) as CurrentUser;
+
+        setUser(parsedUser);
+
+        const accessToken =
+          localStorage.getItem(
+            'accessToken',
+          );
+
+        if (accessToken) {
+          void getCart(accessToken)
+            .then((cart) => {
+              if (active) {
+                setCartItemCount(
+                  getCartItemCount(cart),
+                );
+              }
+            })
+            .catch(() => {
+              if (active) {
+                setCartItemCount(0);
+              }
+            });
+        }
+      } catch {
+        localStorage.removeItem(
+          'user',
+        );
+
+        localStorage.removeItem(
+          'accessToken',
+        );
+      }
+    }, 0);
+
+    // Hủy timer/listener để không cập nhật state sau khi header unmount.
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+
+      window.removeEventListener(
+        CART_UPDATED_EVENT,
+        handleCartUpdated,
       );
-    }
+    };
   }, []);
 
+  // Xác định mục điều hướng đang active, xử lý riêng đường dẫn trang chủ.
   function isActive(
     href: string,
   ) {
@@ -94,31 +169,33 @@ export default function UserHeader() {
     );
   }
 
+  // Chỉ hiện mục "Đơn hàng" sau khi xác định user đã đăng nhập.
+  const visibleNavItems = user
+    ? [
+        ...navItems,
+        { label: 'Đơn hàng', href: '/orders' },
+      ]
+    : navItems;
+
   return (
     <>
-       <header className="sticky top-0 z-40 border-b border-[#E9E1D8] bg-white/95 backdrop-blur">
+       <header className="fixed inset-x-0 top-0 z-40 border-b border-[#E9E1D8] bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link
             href="/"
-            className="flex items-center gap-2"
+            aria-label="Kippora - Trang chủ"
+            className="flex shrink-0 items-center"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#4A2C20] text-white">
-              <Coffee size={20} />
-            </div>
-  
-            <div>
-              <p className="text-lg font-bold text-[#4A2C20]">
-                Take Coffee
-              </p>
-  
-              <p className="hidden text-[11px] text-[#8A817B] sm:block">
-                Coffee & More
-              </p>
-            </div>
+            <BrandLogo
+              variant="wordmark"
+              priority
+              sizes="(max-width: 640px) 128px, 150px"
+              className="h-auto w-32 sm:w-[150px]"
+            />
           </Link>
   
           <nav className="hidden items-center gap-1 md:flex">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -141,10 +218,13 @@ export default function UserHeader() {
             >
               <ShoppingCart size={20} />
   
-              {/* Sau này nối số lượng thật từ Cart API */}
-              <span className="absolute right-0 top-0 hidden h-4 min-w-4 items-center justify-center rounded-full bg-[#C9894B] px-1 text-[10px] font-bold text-white">
-                0
-              </span>
+              {cartItemCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#C9894B] px-1 text-[10px] font-bold text-white shadow-sm">
+                  {cartItemCount > 99
+                    ? '99+'
+                    : cartItemCount}
+                </span>
+              )}
             </Link>
   
             {user ? (
@@ -211,21 +291,14 @@ export default function UserHeader() {
               onClick={() =>
                 setMobileOpen(false)
               }
-              className="flex items-center gap-3"
+              aria-label="Kippora - Trang chủ"
+              className="flex items-center"
             >
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#4A2C20] text-white shadow-sm">
-                <Coffee size={20} />
-              </div>
-
-              <div>
-                <p className="font-bold text-[#4A2C20]">
-                  Take Coffee
-                </p>
-
-                <p className="mt-0.5 text-[11px] text-[#8A817B]">
-                  Coffee & More
-                </p>
-              </div>
+              <BrandLogo
+                variant="wordmark"
+                sizes="145px"
+                className="h-auto w-[145px]"
+              />
             </Link>
 
             <button
@@ -242,7 +315,7 @@ export default function UserHeader() {
         </div>
 
         <nav className="flex-1 space-y-2 overflow-y-auto px-5 py-5">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const active =
               isActive(item.href);
 
@@ -316,7 +389,7 @@ export default function UserHeader() {
           )}
 
           <p className="mt-4 text-center text-[11px] text-[#A0968F]">
-            Take Coffee · 2026
+            Kippora · 2026
           </p>
         </div>
       </aside>

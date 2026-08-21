@@ -27,6 +27,8 @@ import {
   usePathname,
 } from 'next/navigation';
 
+import BrandLogo from '@/components/brand/brand-logo';
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -204,9 +206,15 @@ export default function AdminSidebar({
           <Link
             href="/admin"
             onClick={onClose}
-            className="text-xl font-bold text-[#4A2C20]"
+            aria-label="Kippora Admin"
+            className="flex items-center"
           >
-            Take Coffee
+            <BrandLogo
+              variant="wordmark"
+              priority
+              sizes="140px"
+              className="h-auto w-[140px]"
+            />
           </Link>
 
           <button
@@ -296,7 +304,7 @@ export default function AdminSidebar({
         <div className="border-t border-[#E9E1D8] p-4">
           <div className="rounded-xl bg-[#FAF8F5] px-3 py-3">
             <p className="text-xs font-semibold text-[#4A2C20]">
-              Take Coffee Admin
+              Kippora Admin
             </p>
 
             <p className="mt-1 text-xs text-[#8A817B]">

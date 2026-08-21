@@ -29,13 +29,14 @@ import {
   export class CartController {
     constructor(private readonly cartService: CartService) {}
   
-    // Lấy giỏ hàng của user đang đăng nhập
+    // Nhận GET /cart và lấy giỏ của user từ JWT, không nhận userId từ client.
     @Get()
     getCart(@Req() request: AuthenticatedRequest) {
       return this.cartService.getCart(request.user.sub);
     }
   
-    // Thêm sản phẩm + size + topping vào giỏ hàng
+    // Nhận POST /cart/items; service sẽ tạo/tăng món và trả thêm addedItemId
+    // để frontend chọn chính xác dòng món vừa được xử lý.
     @Post('items')
     addItem(
       @Req() request: AuthenticatedRequest,
@@ -47,7 +48,7 @@ import {
       );
     }
   
-    // Cập nhật số lượng món
+    // Nhận PATCH /cart/items/:id và cập nhật quantity của món thuộc user.
     @Patch('items/:id')
     updateItem(
       @Req() request: AuthenticatedRequest,
@@ -61,7 +62,7 @@ import {
       );
     }
   
-    // Xóa một món khỏi giỏ hàng
+    // Nhận DELETE /cart/items/:id và xóa một món thuộc giỏ của user.
     @Delete('items/:id')
     removeItem(
       @Req() request: AuthenticatedRequest,
@@ -73,7 +74,7 @@ import {
       );
     }
   
-    // Xóa toàn bộ món trong giỏ hàng
+    // Nhận DELETE /cart và xóa toàn bộ món nhưng không xóa bản ghi Cart.
     @Delete()
     clearCart(@Req() request: AuthenticatedRequest) {
       return this.cartService.clearCart(request.user.sub);

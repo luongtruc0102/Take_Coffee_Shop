@@ -5,12 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { FuzzySearchService } from '../common/fuzzy-search/fuzzy-search.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { UpdateVoucherDto } from './dto/update-voucher.dto';
 
 @Injectable()
 export class VouchersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fuzzySearch: FuzzySearchService,
+  ) {}
 
   // Tạo voucher mới
   async create(createVoucherDto: CreateVoucherDto) {
@@ -46,7 +50,7 @@ export class VouchersService {
   }
 
   // ADMIN xem toàn bộ voucher, kể cả voucher đã khóa
-  async findAll() {
+  async findAll(query = '') {
     const [
       vouchers,
       staffVoucherUsedCount,
@@ -99,7 +103,7 @@ export class VouchersService {
       isSystemVoucher: true,
     };
   
-    return [
+    const results = [
       staffVoucher,
   
       ...vouchers.map(
@@ -109,6 +113,14 @@ export class VouchersService {
         }),
       ),
     ];
+
+    return this.fuzzySearch.search(results, query, {
+      keys: [
+        { name: 'code', weight: 0.65 },
+        { name: 'description', weight: 0.25 },
+        { name: 'discountType', weight: 0.1 },
+      ],
+    });
   }
 
   async findAvailableForCheckout(

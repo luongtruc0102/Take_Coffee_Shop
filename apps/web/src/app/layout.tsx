@@ -3,8 +3,11 @@ import 'leaflet/dist/leaflet.css';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Take Coffee',
-  description: 'Take Coffee Shop',
+  title: {
+    default: 'KipporaCoffee',
+    template: '%s | Kippora',
+  },
+  description: 'Kippora Coffee & Tea - Mỗi ngày một vị vui.',
 };
 
 export default function RootLayout({

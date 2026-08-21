@@ -1,32 +1,26 @@
 import {
-    Coffee,
     Mail,
     MapPin,
     Phone,
   } from 'lucide-react';
   
   import Link from 'next/link';
+  import BrandLogo from '@/components/brand/brand-logo';
   
   export default function UserFooter() {
     return (
       <footer className="mt-6 border-t border-[#E9E1D8] bg-white">
         <div className="mx-auto grid max-w-[1440px] gap-8 px-4 py-10 sm:px-6 md:grid-cols-3 lg:px-8">
           <div>
-            <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#4A2C20] text-white">
-                <Coffee
-                  size={18}
-                />
-              </div>
-  
-              <span className="text-lg font-bold text-[#4A2C20]">
-                Take Coffee
-              </span>
-            </div>
+            <BrandLogo
+              variant="horizontalFull"
+              sizes="190px"
+              className="h-auto w-[190px]"
+            />
   
             <p className="mt-3 max-w-sm text-sm leading-6 text-[#78866B]">
-              Thưởng thức cà phê theo cách của bạn.
-              Đặt món nhanh chóng, tiện lợi và dễ dàng.
+              Mỗi ngày một vị vui. Đặt cà phê và trà
+              nhanh chóng, tiện lợi theo cách của bạn.
             </p>
           </div>
   
@@ -70,7 +64,7 @@ import {
                   size={16}
                 />
   
-                Take Coffee
+                Kippora Coffee & Tea
               </div>
   
               <div className="flex items-center gap-2">
@@ -86,7 +80,7 @@ import {
                   size={16}
                 />
   
-                takecoffee@gmail.com
+                kippora.coffee@gmail.com
               </div>
             </div>
           </div>
@@ -94,7 +88,7 @@ import {
   
         <div className="border-t border-[#E9E1D8]">
           <div className="mx-auto max-w-[1440px] px-4 py-4 text-center text-xs text-[#8A817B] sm:px-6 lg:px-8">
-            © 2026 Take Coffee. All rights reserved.
+            © 2026 Kippora. All rights reserved.
           </div>
         </div>
       </footer>

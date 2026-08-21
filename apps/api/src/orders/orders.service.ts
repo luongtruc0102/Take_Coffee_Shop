@@ -9,12 +9,14 @@ import { CheckoutDto } from './dto/checkout.dto';
 import { DeliveryLocationQuoteDto } from './dto/delivery-location-quote.dto';
 import { DeliveryQuoteDto } from './dto/delivery-quote.dto';
 import { VouchersService } from '../vouchers/vouchers.service';
+import { FuzzySearchService } from '../common/fuzzy-search/fuzzy-search.service';
 
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly vouchersService: VouchersService,
+    private readonly fuzzySearch: FuzzySearchService,
   ) {}
 
   private getStoreCoordinates() {
@@ -94,7 +96,7 @@ export class OrdersService {
 
   private getMapRequestHeaders() {
     return {
-      'User-Agent': 'TakeCoffeeShop/1.0',
+      'User-Agent': 'Kippora/1.0',
       'Accept-Language': 'vi',
     };
   }
@@ -692,6 +694,115 @@ export class OrdersService {
     });
   }
 
+  private async cancelOrder(
+    orderId: number,
+    allowedStatuses: OrderStatus[],
+    userId?: number,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findFirst({
+        where: {
+          id: orderId,
+          ...(userId ? { userId } : {}),
+        },
+        include: {
+          payment: true,
+          appliedVouchers: true,
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      }
+
+      if (!allowedStatuses.includes(order.status)) {
+        throw new BadRequestException(
+          userId
+            ? 'Chỉ có thể hủy đơn hàng đang chờ xác nhận'
+            : 'Đơn hàng không còn ở trạng thái có thể hủy',
+        );
+      }
+
+      if (order.payment?.status === 'PAID') {
+        throw new BadRequestException(
+          'Đơn hàng đã thanh toán cần được hoàn tiền trước khi hủy',
+        );
+      }
+
+      const cancelled = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          status: order.status,
+          ...(userId ? { userId } : {}),
+        },
+        data: {
+          status: 'CANCELLED',
+        },
+      });
+
+      if (cancelled.count !== 1) {
+        throw new BadRequestException(
+          'Trạng thái đơn hàng vừa thay đổi, vui lòng tải lại trang',
+        );
+      }
+
+      if (order.loyaltyPointsUsed > 0) {
+        await tx.user.update({
+          where: { id: order.userId },
+          data: {
+            loyaltyPoints: {
+              increment: order.loyaltyPointsUsed,
+            },
+          },
+        });
+      }
+
+      const voucherIds = [
+        ...order.appliedVouchers.map((voucher) => voucher.voucherId),
+        ...(order.voucherId ? [order.voucherId] : []),
+      ].filter((id, index, ids) => ids.indexOf(id) === index);
+
+      await Promise.all(
+        voucherIds.map((voucherId) =>
+          tx.voucher.updateMany({
+            where: {
+              id: voucherId,
+              usedCount: { gt: 0 },
+            },
+            data: {
+              usedCount: { decrement: 1 },
+            },
+          }),
+        ),
+      );
+
+      await tx.payment.updateMany({
+        where: {
+          orderId,
+          status: 'PENDING',
+        },
+        data: {
+          status: 'CANCELLED',
+        },
+      });
+
+      const cancelledOrder = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          payment: true,
+          appliedVouchers: { include: { voucher: true } },
+          items: { include: { toppings: true } },
+        },
+      });
+
+      if (!cancelledOrder) {
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      }
+
+      return cancelledOrder;
+    });
+  }
+
   // =========================
   // USER ORDER
   // =========================
@@ -742,13 +853,18 @@ export class OrdersService {
     return order;
   }
 
+  // User chỉ được tự hủy đơn đang chờ xác nhận của chính mình
+  async cancelMyOrder(userId: number, orderId: number) {
+    return this.cancelOrder(orderId, ['PENDING'], userId);
+  }
+
   // =========================
   // ADMIN / STAFF ORDER
   // =========================
 
   // ADMIN/STAFF xem toàn bộ đơn hàng trong hệ thống
-  async findAll() {
-    return this.prisma.order.findMany({
+  async findAll(query = '') {
+    const orders = await this.prisma.order.findMany({
       include: {
         user: {
           select: {
@@ -779,6 +895,23 @@ export class OrdersService {
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    return this.fuzzySearch.search(orders, query, {
+      keys: [
+        {
+          name: 'id',
+          weight: 0.18,
+          getFn: (order) => String(order.id),
+        },
+        { name: 'receiverName', weight: 0.2 },
+        { name: 'receiverPhone', weight: 0.15 },
+        { name: 'deliveryAddress', weight: 0.1 },
+        { name: 'user.email', weight: 0.1 },
+        { name: 'user.fullName', weight: 0.07 },
+        { name: 'voucherCode', weight: 0.05 },
+        { name: 'items.productName', weight: 0.15 },
+      ],
     });
   }
 
@@ -860,6 +993,10 @@ export class OrdersService {
       );
     }
 
+    if (status === 'CANCELLED') {
+      return this.cancelOrder(id, ['PENDING', 'CONFIRMED']);
+    }
+
     // Khi đơn chưa hoàn tất thì chỉ cập nhật trạng thái
     if (status !== 'COMPLETED') {
       return this.prisma.order.update({
@@ -896,6 +1033,7 @@ export class OrdersService {
 
       // Điểm tính trên số tiền thực trả cuối cùng
       const paidAmount = Number(currentOrder.totalPrice);
+      const completedAt = new Date();
 
       // Mỗi 1.000đ = 10 điểm
       const earnedPoints = canEarnPoints
@@ -911,7 +1049,7 @@ export class OrdersService {
 
           loyaltyPointsEarned: earnedPoints,
 
-          loyaltyPointsGrantedAt: canEarnPoints ? new Date() : null,
+          loyaltyPointsGrantedAt: canEarnPoints ? completedAt : null,
         },
       });
 
@@ -928,7 +1066,32 @@ export class OrdersService {
         });
       }
 
-      return updatedOrder;
+      await tx.payment.updateMany({
+        where: {
+          orderId: id,
+          method: 'COD',
+          status: 'PENDING',
+        },
+        data: {
+          status: 'PAID',
+          paidAt: completedAt,
+        },
+      });
+
+      const completedOrder = await tx.order.findUnique({
+        where: { id: updatedOrder.id },
+        include: {
+          payment: true,
+          appliedVouchers: { include: { voucher: true } },
+          items: { include: { toppings: true } },
+        },
+      });
+
+      if (!completedOrder) {
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      }
+
+      return completedOrder;
     });
   }
 }

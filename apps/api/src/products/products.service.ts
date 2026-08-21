@@ -4,12 +4,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { FuzzySearchService } from '../common/fuzzy-search/fuzzy-search.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fuzzySearch: FuzzySearchService,
+  ) {}
 
   async create(createProductDto: CreateProductDto) {
     // Chỉ cho phép tạo sản phẩm trong danh mục đang hoạt động
@@ -34,7 +38,7 @@ export class ProductsService {
         price: createProductDto.price,
         imageUrl: createProductDto.imageUrl,
         categoryId: createProductDto.categoryId,
-    
+
         // Sản phẩm mới luôn có size S mặc định
         variants: {
           create: {
@@ -43,16 +47,16 @@ export class ProductsService {
           },
         },
       },
-    
+
       include: {
         category: true,
-    
+
         variants: {
           orderBy: {
             price: 'asc',
           },
         },
-    
+
         toppings: {
           include: {
             topping: true,
@@ -62,9 +66,9 @@ export class ProductsService {
     });
   }
 
-  async findAll() {
+  async findAll(query = '') {
     // API public chỉ trả sản phẩm thuộc danh mục đang hoạt động
-    return this.prisma.product.findMany({
+    const products = await this.prisma.product.findMany({
       where: {
         isActive: true,
         category: {
@@ -73,7 +77,7 @@ export class ProductsService {
       },
       include: {
         category: true,
-  
+
         // Chỉ trả các topping đang hoạt động
         toppings: {
           where: {
@@ -85,7 +89,7 @@ export class ProductsService {
             topping: true,
           },
         },
-  
+
         // Chỉ trả các size/variant đang hoạt động
         variants: {
           where: {
@@ -99,6 +103,14 @@ export class ProductsService {
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    return this.fuzzySearch.search(products, query, {
+      keys: [
+        { name: 'name', weight: 0.65 },
+        { name: 'description', weight: 0.2 },
+        { name: 'category.name', weight: 0.15 },
+      ],
     });
   }
 
@@ -114,7 +126,7 @@ export class ProductsService {
       },
       include: {
         category: true,
-  
+
         // Không hiển thị topping đã bị khóa
         toppings: {
           where: {
@@ -126,7 +138,7 @@ export class ProductsService {
             topping: true,
           },
         },
-  
+
         // Không hiển thị variant đã bị khóa
         variants: {
           where: {
@@ -138,11 +150,11 @@ export class ProductsService {
         },
       },
     });
-  
+
     if (!product) {
       throw new NotFoundException('Không tìm thấy sản phẩm');
     }
-  
+
     return product;
   }
 
@@ -184,13 +196,13 @@ export class ProductsService {
       data: updateProductDto,
       include: {
         category: true,
-      
+
         variants: {
           orderBy: {
             price: 'asc',
           },
         },
-      
+
         toppings: {
           include: {
             topping: true,
@@ -253,9 +265,7 @@ export class ProductsService {
     });
 
     if (existing) {
-      throw new ConflictException(
-        'Topping đã được gắn vào sản phẩm',
-      );
+      throw new ConflictException('Topping đã được gắn vào sản phẩm');
     }
 
     // Tạo quan hệ nhiều-nhiều Product ↔ Topping
@@ -282,9 +292,7 @@ export class ProductsService {
     });
 
     if (!relation) {
-      throw new NotFoundException(
-        'Topping chưa được gắn vào sản phẩm',
-      );
+      throw new NotFoundException('Topping chưa được gắn vào sản phẩm');
     }
 
     // Chỉ xóa quan hệ, không xóa Product hoặc Topping
@@ -303,8 +311,8 @@ export class ProductsService {
   }
 
   // ADMIN xem toàn bộ sản phẩm để quản lý cả sản phẩm đã khóa
-  async findAllForAdmin() {
-    return this.prisma.product.findMany({
+  async findAllForAdmin(query = '') {
+    const products = await this.prisma.product.findMany({
       include: {
         category: true,
 
@@ -324,6 +332,25 @@ export class ProductsService {
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    return this.fuzzySearch.search(products, query, {
+      keys: [
+        { name: 'name', weight: 0.55 },
+        { name: 'description', weight: 0.15 },
+        { name: 'category.name', weight: 0.15 },
+        {
+          name: 'toppingNames',
+          weight: 0.1,
+          getFn: (product) =>
+            product.toppings.map(({ topping }) => topping.name),
+        },
+        {
+          name: 'variantSizes',
+          weight: 0.05,
+          getFn: (product) => product.variants.map(({ size }) => size),
+        },
+      ],
     });
   }
 }

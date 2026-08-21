@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -26,7 +27,7 @@ import {
 import type {
   Category,
 } from '@/types/product';
-import { matchesSearch } from '@/utils/text.util';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
 export default function AdminCategoriesPage() {
   const [categories, setCategories] =
@@ -46,6 +47,8 @@ export default function AdminCategoriesPage() {
 
   const [search, setSearch] =
     useState('');
+  const debouncedSearch = useDebouncedValue(search);
+
 
   const [formOpen, setFormOpen] =
     useState(false);
@@ -68,53 +71,63 @@ export default function AdminCategoriesPage() {
     setSelectedStatus,
   ] = useState('ALL');
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
+  const loadCategories = useCallback(
+    async (query = '', signal?: AbortSignal) => {
+      await Promise.resolve();
 
-  async function loadCategories() {
-    try {
-      setLoading(true);
-      setError('');
+      try {
+        setLoading(true);
+        setError('');
 
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
+        const accessToken = localStorage.getItem('accessToken');
 
-      if (!accessToken) {
-        throw new Error(
-          'Không tìm thấy phiên đăng nhập.',
-        );
-      }
+        if (!accessToken) {
+          throw new Error('Không tìm thấy phiên đăng nhập.');
+        }
 
-      const data =
-        await getAdminCategories(
+        const data = await getAdminCategories(
           accessToken,
+          query,
+          signal,
         );
 
-      setCategories(data);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'Không thể tải danh mục',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+        setCategories(data);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'Không thể tải danh mục',
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const timeoutId = window.setTimeout(() => {
+      void loadCategories(debouncedSearch, controller.signal);
+    }, 0);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [debouncedSearch, loadCategories]);
 
   const filteredCategories =
   useMemo(() => {
     return categories.filter(
       (category) => {
-        const matchesKeyword =
-          matchesSearch(
-            category.name,
-            search,
-          );
-
         const matchesStatus =
           selectedStatus === 'ALL' ||
           (selectedStatus ===
@@ -124,15 +137,11 @@ export default function AdminCategoriesPage() {
             'INACTIVE' &&
             !category.isActive);
 
-        return (
-          matchesKeyword &&
-          matchesStatus
-        );
+        return matchesStatus;
       },
     );
   }, [
     categories,
-    search,
     selectedStatus,
   ]);
 
@@ -224,7 +233,7 @@ export default function AdminCategoriesPage() {
         );
       }
 
-      await loadCategories();
+      await loadCategories(debouncedSearch);
       closeForm();
     } catch (error) {
       setError(
@@ -294,7 +303,7 @@ export default function AdminCategoriesPage() {
 
           <p className="mt-1 text-[#78866B]">
             Quản lý nhóm sản phẩm
-            trong menu Take Coffee.
+            trong menu Kippora.
           </p>
         </div>
 

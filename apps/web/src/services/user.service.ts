@@ -30,14 +30,22 @@ function getHeaders(
 
 export async function getAdminUsers(
   accessToken: string,
+  query = '',
+  signal?: AbortSignal,
 ): Promise<AdminUser[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set('q', query.trim());
+
+  const url = `${getApiUrl()}/users?${params.toString()}`;
+
   const response = await fetch(
-    `${getApiUrl()}/users`,
+    url,
     {
       headers:
         getHeaders(accessToken),
 
       cache: 'no-store',
+      signal,
     },
   );
 

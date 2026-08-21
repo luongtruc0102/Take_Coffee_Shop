@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -24,7 +25,7 @@ import {
 } from '@/services/topping.service';
 
 import type { Topping } from '@/types/product';
-import { matchesSearch } from '@/utils/text.util';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
 
 export default function AdminToppingsPage() {
@@ -45,6 +46,8 @@ export default function AdminToppingsPage() {
 
   const [search, setSearch] =
     useState('');
+  const debouncedSearch = useDebouncedValue(search);
+
 
   const [formOpen, setFormOpen] =
     useState(false);
@@ -67,53 +70,63 @@ export default function AdminToppingsPage() {
     setSelectedStatus,
     ] = useState('ALL');
 
-  useEffect(() => {
-    loadToppings();
-  }, []);
+  const loadToppings = useCallback(
+    async (query = '', signal?: AbortSignal) => {
+      await Promise.resolve();
 
-  async function loadToppings() {
-    try {
-      setLoading(true);
-      setError('');
+      try {
+        setLoading(true);
+        setError('');
 
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
+        const accessToken = localStorage.getItem('accessToken');
 
-      if (!accessToken) {
-        throw new Error(
-          'Không tìm thấy phiên đăng nhập.',
-        );
-      }
+        if (!accessToken) {
+          throw new Error('Không tìm thấy phiên đăng nhập.');
+        }
 
-      const data =
-        await getAdminToppings(
+        const data = await getAdminToppings(
           accessToken,
+          query,
+          signal,
         );
 
-      setToppings(data);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'Không thể tải topping',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+        setToppings(data);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'Không thể tải topping',
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const timeoutId = window.setTimeout(() => {
+      void loadToppings(debouncedSearch, controller.signal);
+    }, 0);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [debouncedSearch, loadToppings]);
 
   const filteredToppings =
   useMemo(() => {
     return toppings.filter(
       (topping) => {
-        const matchesKeyword =
-          matchesSearch(
-            topping.name,
-            search,
-          );
-
         const matchesStatus =
           selectedStatus === 'ALL' ||
           (selectedStatus ===
@@ -123,15 +136,11 @@ export default function AdminToppingsPage() {
             'INACTIVE' &&
             !topping.isActive);
 
-        return (
-          matchesKeyword &&
-          matchesStatus
-        );
+        return matchesStatus;
       },
     );
   }, [
     toppings,
-    search,
     selectedStatus,
   ]);
 
@@ -221,8 +230,7 @@ export default function AdminToppingsPage() {
       }
 
       if (editingTopping) {
-        const updated =
-          await updateTopping(
+        await updateTopping(
             accessToken,
             editingTopping.id,
             {
@@ -232,21 +240,8 @@ export default function AdminToppingsPage() {
                 numericPrice,
             },
           );
-
-        setToppings((current) =>
-          current.map((item) =>
-            item.id ===
-            editingTopping.id
-              ? {
-                  ...item,
-                  ...updated,
-                }
-              : item,
-          ),
-        );
       } else {
-        const created =
-          await createTopping(
+        await createTopping(
             accessToken,
             {
               name:
@@ -255,13 +250,9 @@ export default function AdminToppingsPage() {
                 numericPrice,
             },
           );
-
-        setToppings((current) => [
-          created,
-          ...current,
-        ]);
       }
 
+      await loadToppings(debouncedSearch);
       closeForm();
     } catch (error) {
       setError(

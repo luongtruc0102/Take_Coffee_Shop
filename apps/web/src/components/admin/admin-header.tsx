@@ -109,7 +109,7 @@ export default function AdminHeader({
           </h1>
 
           <p className="hidden text-sm text-[#78866B] sm:block">
-            Quản lý hệ thống Take Coffee
+            Quản lý hệ thống Kippora
           </p>
         </div>
       </div>

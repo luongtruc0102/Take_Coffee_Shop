@@ -16,6 +16,7 @@ import {
   import { UpdateVoucherStatusDto } from './dto/update-voucher-status.dto';
   import { UpdateVoucherDto } from './dto/update-voucher.dto';
   import { VouchersService } from './vouchers.service';
+  import { SearchQueryDto } from '../common/dto/search-query.dto';
 
   interface AuthenticatedRequest extends Request {
     user: {
@@ -39,8 +40,8 @@ import {
     // ADMIN xem toàn bộ voucher để quản lý
     @Roles('ADMIN')
     @Get()
-    findAll() {
-      return this.vouchersService.findAll();
+    findAll(@Query() query: SearchQueryDto) {
+      return this.vouchersService.findAll(query.q);
     }
 
     // USER xem các voucher hiện hành và khả năng áp dụng cho đơn đang chọn

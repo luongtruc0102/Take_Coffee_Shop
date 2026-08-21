@@ -120,7 +120,9 @@ export default function CheckoutPage() {
 
   const [error, setError] = useState("");
 
+  // Khôi phục danh sách CartItem đã chọn và dữ liệu user khi mở checkout.
   useEffect(() => {
+    // Xác thực session, loại ID không còn trong giỏ rồi tải voucher phù hợp.
     async function loadCheckout() {
       try {
         setLoading(true);
@@ -202,6 +204,7 @@ export default function CheckoutPage() {
     loadCheckout();
   }, [router]);
 
+  // Chỉ giữ các CartItem mà trang giỏ đã chuyển sang qua sessionStorage.
   const selectedItems = useMemo(() => {
     if (!cart) {
       return [];
@@ -210,6 +213,7 @@ export default function CheckoutPage() {
     return cart.items.filter((item) => selectedItemIds.includes(item.id));
   }, [cart, selectedItemIds]);
 
+  // Tính tạm tính từ các dòng được chọn, không dùng tổng của toàn bộ giỏ.
   const subtotal = useMemo(() => {
     return selectedItems.reduce(
       (total, item) => total + Number(item.lineTotal),
@@ -217,10 +221,12 @@ export default function CheckoutPage() {
     );
   }, [selectedItems]);
 
+  // Cộng quantity để hiển thị tổng số sản phẩm đang thanh toán.
   const selectedQuantity = useMemo(() => {
     return selectedItems.reduce((total, item) => total + item.quantity, 0);
   }, [selectedItems]);
 
+  // Cộng tối đa hai voucher đã chọn và không cho giảm vượt subtotal.
   const voucherDiscount = useMemo(() => {
     const discount = vouchers
       .filter((voucher) => selectedVoucherCodes.includes(voucher.code))
@@ -229,6 +235,7 @@ export default function CheckoutPage() {
     return Math.min(discount, subtotal);
   }, [selectedVoucherCodes, subtotal, vouchers]);
 
+  // Tính phí giao hàng xem trước theo khoảng cách và chính sách hiện tại.
   const deliveryBaseFee =
     fulfillmentMethod === "PICKUP" || distanceKm === null
       ? 0
@@ -245,6 +252,7 @@ export default function CheckoutPage() {
 
   const deliveryFee = Math.max(0, deliveryBaseFee - deliveryDiscount);
 
+  // Lấy vị trí cửa hàng từ môi trường để dùng chung cho bản đồ và pickup.
   const configuredStoreCoordinates = {
     latitude: Number(process.env.NEXT_PUBLIC_STORE_LATITUDE),
     longitude: Number(process.env.NEXT_PUBLIC_STORE_LONGITUDE),
@@ -257,6 +265,7 @@ export default function CheckoutPage() {
     Number.isFinite(configuredStoreCoordinates.latitude) &&
     Number.isFinite(configuredStoreCoordinates.longitude);
 
+  // Chuẩn hóa mọi giá tiền checkout theo định dạng tiền Việt Nam.
   function formatCurrency(value: number | string) {
     return new Intl.NumberFormat("vi-VN", {
       style: "currency",
@@ -264,6 +273,8 @@ export default function CheckoutPage() {
     }).format(Number(value));
   }
 
+  // Chặn điểm âm, vượt số dư hoặc vượt giá trị đơn sau khi trừ voucher;
+  // điểm chỉ được dùng theo từng mốc 1.000.
   function handlePointsChange(value: number) {
     if (value < 0) {
       value = 0;
@@ -279,6 +290,7 @@ export default function CheckoutPage() {
     setLoyaltyPointsToUse(Math.min(value, maxUsable));
   }
 
+  // Bật/tắt voucher hợp lệ và giới hạn mỗi đơn tối đa hai mã.
   function toggleVoucher(voucher: CheckoutVoucher) {
     if (!voucher.canUse) {
       return;
@@ -299,6 +311,7 @@ export default function CheckoutPage() {
     });
   }
 
+  // Đổi giao hàng/pickup và xóa kết quả tuyến đường không còn phù hợp.
   function selectFulfillmentMethod(method: FulfillmentMethod) {
     deliveryRequestId.current += 1;
     setFulfillmentMethod(method);
@@ -310,6 +323,8 @@ export default function CheckoutPage() {
     setDistanceKm(null);
   }
 
+  // Debounce việc gợi ý địa chỉ; requestId ngăn response cũ ghi đè từ khóa
+  // mới khi người dùng nhập nhanh.
   useEffect(() => {
     const normalizedAddress = deliveryAddress.trim();
 
@@ -354,6 +369,8 @@ export default function CheckoutPage() {
     };
   }, [deliveryAddress, loading, router, showAddressSuggestions]);
 
+  // Tự động geocode địa chỉ, dựng tuyến và tính khoảng cách sau khi user
+  // ngừng nhập; request cũ được vô hiệu bằng deliveryRequestId.
   useEffect(() => {
     const normalizedAddress = deliveryAddress.trim();
 
@@ -451,6 +468,8 @@ export default function CheckoutPage() {
     subtotal,
   ]);
 
+  // Dùng tọa độ từ gợi ý hoặc cú chạm bản đồ để tính lại tuyến đường ngay,
+  // đồng thời đồng bộ địa chỉ chuẩn hóa mà backend trả về.
   async function calculateDeliveryFromCoordinates(
     coordinate: { latitude: number; longitude: number },
     selectedAddress?: string,
@@ -527,6 +546,8 @@ export default function CheckoutPage() {
     }
   }
 
+  // Kiểm tra dữ liệu giao/nhận, gửi đúng CartItem được chọn và chuyển sang
+  // trang chi tiết đơn sau khi backend tạo đơn thành công.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -848,7 +869,7 @@ export default function CheckoutPage() {
                   <Store size={20} className="mt-0.5 shrink-0 text-[#C9894B]" />
                   <div>
                     <p className="font-bold text-[#2A211D]">
-                      Nhận món tại Take Coffee Shop
+                      Nhận món tại Kippora Coffee & Tea
                     </p>
                     <p className="mt-1 text-sm leading-6 text-[#5E5650]">
                       {configuredStoreAddress}
@@ -1036,10 +1057,17 @@ export default function CheckoutPage() {
                   type="number"
                   min={0}
                   step={1000}
-                  value={loyaltyPointsToUse}
-                  onChange={(event) =>
-                    handlePointsChange(Number(event.target.value))
-                  }
+                  value={loyaltyPointsToUse || ""}
+                  onChange={(event) => {
+                    // Chuẩn hóa chuỗi số để không giữ các số 0 ở đầu.
+                    const normalizedValue =
+                      event.target.value.replace(
+                        /^0+(?=\d)/,
+                        "",
+                      );
+
+                    handlePointsChange(Number(normalizedValue));
+                  }}
                   className="mt-2 h-11 w-full rounded-xl border border-[#E9E1D8] px-4 text-sm outline-none focus:border-[#C9894B]"
                 />
                 <p className="mt-2 text-xs text-[#8A817B]">
@@ -1233,7 +1261,7 @@ export default function CheckoutPage() {
           </div>
           <div className="mt-4 border-t border-[#E9E1D8] pt-4">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-[#2A211D]">Dự kiến</span>
+              <span className="font-semibold text-[#2A211D]">Tổng thanh toán</span>
               <span className="text-xl font-bold text-[#4A2C20]">
                 {formatCurrency(
                   Math.max(
@@ -1246,10 +1274,10 @@ export default function CheckoutPage() {
                 )}
               </span>
             </div>
-            <p className="mt-2 text-xs leading-5 text-[#8A817B]">
+            {/* <p className="mt-2 text-xs leading-5 text-[#8A817B]">
               Tổng cuối cùng sẽ được backend tính lại sau khi kiểm tra voucher
               và điểm.
-            </p>
+            </p> */}
           </div>
           <button
             type="submit"
@@ -1267,13 +1295,12 @@ export default function CheckoutPage() {
               {subtotal < 300000 ? (
                 <>
                   Mua thêm <strong>{formatCurrency(300000 - subtotal)}</strong>{" "}
-                  để được giảm tối đa 20.000đ phí giao hàng.
+                  để được giảm 20.000đ phí giao hàng.
                 </>
               ) : subtotal < 500000 ? (
                 <>
-                  Đơn hàng đã đủ điều kiện giảm tối đa 20.000đ phí giao hàng.
                   Mua thêm <strong>{formatCurrency(500000 - subtotal)}</strong>{" "}
-                  để nâng mức giảm lên 40.000đ.
+                  để được giảm lên 40.000đ phí giao hàng.
                 </>
               ) : (
                 <>Đơn hàng đã đạt ưu đãi giảm tối đa 40.000đ phí giao hàng.</>

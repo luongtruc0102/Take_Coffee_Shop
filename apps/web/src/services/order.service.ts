@@ -24,11 +24,20 @@ function getHeaders(accessToken: string) {
 }
 
 // ADMIN/STAFF lấy toàn bộ đơn hàng
-export async function getAdminOrders(accessToken: string): Promise<Order[]> {
-  const response = await fetch(`${getApiUrl()}/orders/management/all`, {
+export async function getAdminOrders(
+  accessToken: string,
+  query = "",
+  signal?: AbortSignal,
+): Promise<Order[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set("q", query.trim());
+
+  const url = `${getApiUrl()}/orders/management/all?${params.toString()}`;
+  const response = await fetch(url, {
     headers: getHeaders(accessToken),
 
     cache: "no-store",
+    signal,
   });
 
   const data = await response.json();
@@ -233,6 +242,23 @@ export async function checkoutOrder(
 
   return data;
 }
+
+export async function getMyOrders(
+  accessToken: string,
+): Promise<Order[]> {
+  const response = await fetch(`${getApiUrl()}/orders`, {
+    headers: getHeaders(accessToken),
+    cache: "no-store",
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Không thể tải lịch sử đơn hàng");
+  }
+
+  return data;
+}
 export async function getMyOrderById(
   accessToken: string,
   orderId: number,
@@ -246,6 +272,33 @@ export async function getMyOrderById(
 
   if (!response.ok) {
     throw new Error(data.message || "Không thể tải chi tiết đơn hàng");
+  }
+
+  return data;
+}
+
+export async function cancelMyOrder(
+  accessToken: string,
+  orderId: number,
+): Promise<Order> {
+  const response = await fetch(
+    `${getApiUrl()}/orders/${orderId}/cancel`,
+    {
+      method: "PATCH",
+      headers: getHeaders(accessToken),
+    },
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const message = Array.isArray(data.message)
+      ? data.message.join(", ")
+      : data.message;
+
+    throw new Error(
+      message || "Không thể hủy đơn hàng",
+    );
   }
 
   return data;

@@ -152,7 +152,7 @@ export default function DeliveryRouteMap({
           }}
         >
           <Tooltip direction="top" offset={[0, -10]}>
-            Take Coffee Shop
+            Kippora Coffee & Tea
           </Tooltip>
         </CircleMarker>
 

@@ -6,11 +6,13 @@ export default function UserLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // overflow-x-clip chặn tràn ngang mà không tạo scroll container làm hỏng sticky.
   return (
-    <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-[#FAF8F5]">
+    <div className="flex min-h-screen w-full flex-col overflow-x-clip bg-[#FAF8F5]">
       <UserHeader />
 
-      <main className="relative min-w-0 flex-1">
+      {/* Bù chiều cao header fixed để nội dung không bị che. */}
+      <main className="relative min-w-0 flex-1 pt-16">
         {children}
       </main>
 

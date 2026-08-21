@@ -8,11 +8,15 @@ import {
 import * as argon2 from 'argon2';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { FuzzySearchService } from '../common/fuzzy-search/fuzzy-search.service';
 
 @Injectable()
 export class UsersService {
   // Dùng PrismaService để thao tác với bảng User trong PostgreSQL
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fuzzySearch: FuzzySearchService,
+  ) {}
 
   // Tìm tài khoản theo email, dùng khi đăng ký và đăng nhập
   async findByEmail(email: string) {
@@ -153,8 +157,8 @@ async createStaff(
 }
 
   // Lấy danh sách tất cả User trong hệ thống
-  async findAll() {
-    return this.prisma.user.findMany({
+  async findAll(query = '') {
+    const users = await this.prisma.user.findMany({
       select: {
         id: true,
         email: true,
@@ -179,6 +183,21 @@ async createStaff(
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    return this.fuzzySearch.search(users, query, {
+      keys: [
+        {
+          name: 'id',
+          weight: 0.05,
+          getFn: (user) => String(user.id),
+        },
+        { name: 'fullName', weight: 0.3 },
+        { name: 'email', weight: 0.25 },
+        { name: 'phone', weight: 0.2 },
+        { name: 'address', weight: 0.1 },
+        { name: 'role.name', weight: 0.1 },
+      ],
     });
   }
 

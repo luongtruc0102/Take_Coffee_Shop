@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  AlertTriangle,
   ArrowLeft,
   Minus,
   Plus,
@@ -12,6 +13,7 @@ import Link from 'next/link';
 
 import {
   useEffect,
+  useRef,
   useState,
 } from 'react';
 
@@ -30,6 +32,18 @@ import type {
   Cart,
   CartItem,
 } from '@/types/cart';
+
+import {
+  consumeNewCartItemId,
+  notifyCartUpdated,
+} from '@/utils/cart.util';
+
+type DeleteConfirmation =
+  | {
+      kind: 'item';
+      item: CartItem;
+    }
+  | { kind: 'all' };
 
 export default function CartPage() {
   const router =
@@ -64,7 +78,25 @@ export default function CartPage() {
     setSelectedItemIds,
   ] = useState<number[]>([]);
 
+  const [
+    deleteConfirmation,
+    setDeleteConfirmation,
+  ] = useState<DeleteConfirmation | null>(null);
+
+  // undefined: chưa đọc session; null: không có món mới; number: ID cần chọn.
+  const pendingNewItemIdRef =
+    useRef<number | null | undefined>(undefined);
+
+  // Tải giỏ khi vào trang và chỉ chọn CartItem vừa được thêm từ menu.
   useEffect(() => {
+    // Đọc trước khi chờ API và giữ bằng ref để React Strict Mode không
+    // consume hai lần rồi để lượt effect sau ghi đè lựa chọn thành rỗng.
+    if (pendingNewItemIdRef.current === undefined) {
+      pendingNewItemIdRef.current = consumeNewCartItemId();
+    }
+    const newItemId = pendingNewItemIdRef.current;
+
+    // Lấy dữ liệu thật từ backend rồi đồng bộ giỏ, lựa chọn và badge header.
     async function loadCart() {
       try {
         setLoading(true);
@@ -90,13 +122,21 @@ export default function CartPage() {
 
                 setCart(data);
 
-                // Mặc định chọn toàn bộ món trong giỏ
+                const hasNewItem =
+                  newItemId !== null &&
+                  data.items.some(
+                    (item) => item.id === newItemId,
+                  );
+
+                // Mặc định không chọn; chỉ chọn món vừa được thêm từ menu.
                 setSelectedItemIds(
-                data.items.map(
-                    (item: CartItem) =>
-                    item.id,
-                ),
-            );
+                  hasNewItem && newItemId !== null
+                    ? [newItemId]
+                    : [],
+                );
+
+                pendingNewItemIdRef.current = null;
+                notifyCartUpdated(data);
 
       } catch (error) {
         setError(
@@ -112,6 +152,7 @@ export default function CartPage() {
     loadCart();
   }, [router]);
 
+  // Định dạng số thành tiền Việt Nam để hiển thị trong giỏ.
   function formatCurrency(
     value:
       | number
@@ -130,6 +171,7 @@ export default function CartPage() {
     );
   }
 
+  // Ghép URL backend cho ảnh sản phẩm lưu dưới dạng đường dẫn tương đối.
   function getImageUrl(
     imageUrl:
       | string
@@ -165,6 +207,7 @@ export default function CartPage() {
     }`;
   }
 
+  // Bật hoặc bỏ chọn một CartItem để quyết định món nào được checkout.
   function toggleItem(
     itemId: number,
   ) {
@@ -184,6 +227,7 @@ export default function CartPage() {
     );
   }
 
+  // Chọn toàn bộ nếu chưa đủ; bỏ toàn bộ nếu tất cả món đang được chọn.
   function toggleAllItems() {
     if (!cart) {
       return;
@@ -208,6 +252,7 @@ export default function CartPage() {
     );
   }
 
+  // Cập nhật quantity qua backend rồi đồng bộ tổng tiền và badge.
   async function handleQuantity(
     item: CartItem,
     quantity: number,
@@ -243,6 +288,7 @@ export default function CartPage() {
         );
 
       setCart(updated);
+      notifyCartUpdated(updated);
     } catch (error) {
       setError(
         error instanceof Error
@@ -254,6 +300,7 @@ export default function CartPage() {
     }
   }
 
+  // Xóa một CartItem sau xác nhận và bỏ ID đó khỏi danh sách checkout.
   async function handleRemove(
     itemId: number,
   ) {
@@ -277,6 +324,8 @@ export default function CartPage() {
         );
 
         setCart(updated);
+        notifyCartUpdated(updated);
+        setDeleteConfirmation(null);
 
         setSelectedItemIds(
         (current) =>
@@ -296,9 +345,11 @@ export default function CartPage() {
     }
   }
 
+  // Xóa mọi CartItem, đưa badge và danh sách lựa chọn về trạng thái rỗng.
   async function handleClear() {
     try {
       setError('');
+      setUpdatingId(-1);
 
       const accessToken =
         localStorage.getItem(
@@ -313,24 +364,42 @@ export default function CartPage() {
         accessToken,
       );
 
-      setCart(
-        (current) =>
-          current
-            ? {
-                ...current,
-                items: [],
-                totalPrice: 0,
-              }
-            : current,
-      );
+      if (cart) {
+        const emptiedCart = {
+          ...cart,
+          items: [],
+          totalPrice: 0,
+        };
+
+        setCart(emptiedCart);
+        notifyCartUpdated(emptiedCart);
+      }
+
       setSelectedItemIds([]);
+      setDeleteConfirmation(null);
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
           : 'Không thể xóa giỏ hàng',
       );
+    } finally {
+      setUpdatingId(null);
     }
+  }
+
+  // Chuyển đúng các CartItem đang chọn sang checkout qua session của tab.
+  function handleCheckout() {
+    if (selectedItemIds.length === 0) {
+      return;
+    }
+
+    sessionStorage.setItem(
+      'checkoutItemIds',
+      JSON.stringify(selectedItemIds),
+    );
+
+    router.push('/checkout');
   }
 
   if (loading) {
@@ -341,6 +410,7 @@ export default function CartPage() {
     );
   }
 
+  // Lọc từ giỏ thật để mọi phần tóm tắt chỉ dùng các dòng đang được tick.
   const selectedItems =
   cart?.items.filter(
     (item) =>
@@ -349,6 +419,7 @@ export default function CartPage() {
       ),
   ) ?? [];
 
+// Tổng quantity của các dòng đã chọn, dùng cho nhãn "Số món".
 const selectedQuantity =
   selectedItems.reduce(
     (total, item) =>
@@ -357,6 +428,7 @@ const selectedQuantity =
     0,
   );
 
+// Tổng tiền chỉ của các món đã chọn, không lấy totalPrice của toàn bộ giỏ.
 const selectedTotal =
   selectedItems.reduce(
     (total, item) =>
@@ -367,6 +439,7 @@ const selectedTotal =
     0,
   );
 
+// Điều khiển trạng thái checkbox "Chọn tất cả" theo toàn bộ CartItem.
 const allSelected =
   !!cart &&
   cart.items.length > 0 &&
@@ -546,9 +619,7 @@ const allSelected =
                             item.id
                           }
                           onClick={() =>
-                            handleRemove(
-                              item.id,
-                            )
+                            setDeleteConfirmation({ kind: 'item', item })
                           }
                           className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-500 transition hover:bg-red-100 disabled:opacity-50"
                         >
@@ -665,8 +736,8 @@ const allSelected =
 
             <button
               type="button"
-              onClick={
-                handleClear
+              onClick={() =>
+                setDeleteConfirmation({ kind: 'all' })
               }
               className="text-sm font-medium text-red-500 transition hover:text-red-600"
             >
@@ -674,10 +745,50 @@ const allSelected =
             </button>
           </div>
 
-          <aside className="h-fit self-start rounded-2xl border border-[#E9E1D8] bg-white p-5 shadow-sm lg:sticky lg:top-24">
+          <aside className="h-fit self-start rounded-2xl border border-[#E9E1D8] bg-white p-5 shadow-sm lg:sticky lg:top-20">
             <h2 className="text-lg font-bold text-[#2A211D]">
               Tóm tắt đơn hàng
             </h2>
+
+            {/* Danh sách dài vẫn cuộn được nhưng ẩn scrollbar để sidebar gọn. */}
+            {selectedItems.length > 0 ? (
+              <div className="no-scrollbar mt-4 max-h-[40vh] space-y-2 overflow-y-auto pr-1">
+                {selectedItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-xl bg-[#FAF8F5] px-3 py-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[#2A211D]">
+                          {item.product.name}
+                        </p>
+                        <p className="mt-0.5 text-xs text-[#78866B]">
+                          Size {item.variant.size} · x{item.quantity}
+                        </p>
+                      </div>
+
+                      <span className="shrink-0 text-sm font-semibold text-[#4A2C20]">
+                        {formatCurrency(item.lineTotal)}
+                      </span>
+                    </div>
+
+                    {item.toppings.length > 0 && (
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#8A817B]">
+                        Topping:{' '}
+                        {item.toppings
+                          .map((relation) => relation.topping.name)
+                          .join(', ')}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-xl bg-[#FAF8F5] px-3 py-3 text-sm text-[#8A817B]">
+                Chọn sản phẩm bên trái để xem tóm tắt.
+              </p>
+            )}
 
             <div className="mt-5 flex items-center justify-between text-sm">
               <span className="text-[#78866B]">
@@ -709,23 +820,67 @@ const allSelected =
                     selectedItemIds.length ===
                     0
                 }
-                onClick={() => {
-                    sessionStorage.setItem(
-                    'checkoutItemIds',
-                    JSON.stringify(
-                        selectedItemIds,
-                    ),
-                    );
-
-                    router.push(
-                    '/checkout',
-                    );
-                }}
+                onClick={handleCheckout}
                 className="mt-5 w-full rounded-2xl bg-[#4A2C20] px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-[#382118] disabled:cursor-not-allowed disabled:opacity-50"
             >
                 Tiến hành thanh toán
             </button>
           </aside>
+        </div>
+      )}
+
+      {/* Dùng chung một modal xác nhận cho xóa một món và xóa toàn bộ. */}
+      {deleteConfirmation && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-[#E9E1D8] bg-white p-6 shadow-2xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+              <AlertTriangle size={24} />
+            </div>
+
+            <h2 className="mt-4 text-xl font-bold text-[#2A211D]">
+              {deleteConfirmation.kind === 'item'
+                ? 'Xóa sản phẩm khỏi giỏ?'
+                : 'Xóa toàn bộ giỏ hàng?'}
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-[#78866B]">
+              {deleteConfirmation.kind === 'item'
+                ? `Bạn có chắc muốn xóa “${deleteConfirmation.item.product.name}” không?`
+                : 'Tất cả sản phẩm trong giỏ sẽ bị xóa. Thao tác này không thể hoàn tác.'}
+            </p>
+
+            {error && (
+              <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
+                {error}
+              </p>
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={updatingId !== null}
+                onClick={() => setDeleteConfirmation(null)}
+                className="rounded-xl border border-[#D9CABE] px-4 py-2.5 text-sm font-semibold text-[#5E5650] disabled:opacity-60"
+              >
+                Giữ lại
+              </button>
+              <button
+                type="button"
+                disabled={updatingId !== null}
+                onClick={() => {
+                  if (deleteConfirmation.kind === 'item') {
+                    void handleRemove(deleteConfirmation.item.id);
+                    return;
+                  }
+
+                  void handleClear();
+                }}
+                className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {updatingId !== null ? 'Đang xóa...' : 'Xác nhận xóa'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

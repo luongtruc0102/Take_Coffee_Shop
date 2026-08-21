@@ -219,7 +219,7 @@ export default function AdminDashboardPage() {
 
           <p className="mt-1 text-[#78866B]">
             Tổng quan hoạt động của
-            Take Coffee.
+            Kippora.
           </p>
         </div>
 

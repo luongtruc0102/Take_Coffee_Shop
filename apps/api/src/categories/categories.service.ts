@@ -4,12 +4,16 @@ import {
     NotFoundException,
   } from '@nestjs/common';
   import { PrismaService } from '../prisma/prisma.service';
+  import { FuzzySearchService } from '../common/fuzzy-search/fuzzy-search.service';
   import { CreateCategoryDto } from './dto/create-category.dto';
   import { UpdateCategoryDto } from './dto/update-category.dto';
   
   @Injectable()
   export class CategoriesService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+      private readonly prisma: PrismaService,
+      private readonly fuzzySearch: FuzzySearchService,
+    ) {}
   
     async create(createCategoryDto: CreateCategoryDto) {
       // Kiểm tra tên danh mục đã tồn tại để tránh dữ liệu bị trùng
@@ -106,8 +110,8 @@ import {
     }
 
     // CategoriesService
-    async findAllForAdmin() {
-      return this.prisma.category.findMany({
+    async findAllForAdmin(query = '') {
+      const categories = await this.prisma.category.findMany({
         include: {
           _count: {
             select: {
@@ -118,6 +122,13 @@ import {
         orderBy: {
           createdAt: 'desc',
         },
+      });
+
+      return this.fuzzySearch.search(categories, query, {
+        keys: [
+          { name: 'name', weight: 0.75 },
+          { name: 'description', weight: 0.25 },
+        ],
       });
     }
   }

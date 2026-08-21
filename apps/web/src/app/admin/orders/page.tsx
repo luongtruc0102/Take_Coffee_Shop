@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -12,9 +13,7 @@ import {
   Search,
 } from 'lucide-react';
 
-import {
-  matchesSearch,
-} from '@/utils/text.util';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
 import OrderDetailModal from '@/components/admin/order-detail-modal';
 
@@ -40,6 +39,8 @@ export default function AdminOrdersPage() {
 
   const [search, setSearch] =
     useState('');
+  const debouncedSearch = useDebouncedValue(search);
+
 
   const [
     selectedStatus,
@@ -66,46 +67,54 @@ export default function AdminOrdersPage() {
   );
 
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadOrders() {
-      // Nhường sang microtask để không cập nhật state đồng bộ trong effect.
+  const loadOrders = useCallback(
+    async (query = '', signal?: AbortSignal) => {
       await Promise.resolve();
 
       try {
+        setLoading(true);
+        setError('');
+
         const accessToken = localStorage.getItem('accessToken');
 
         if (!accessToken) {
           throw new Error('Không tìm thấy phiên đăng nhập.');
         }
 
-        const data = await getAdminOrders(accessToken);
+        const data = await getAdminOrders(accessToken, query, signal);
 
-        if (!cancelled) {
-          setOrders(data);
-        }
+        setOrders(data);
       } catch (error) {
-        if (!cancelled) {
-          setError(
-            error instanceof Error
-              ? error.message
-              : 'Không thể tải đơn hàng',
-          );
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
         }
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'Không thể tải đơn hàng',
+        );
       } finally {
-        if (!cancelled) {
+        if (!signal?.aborted) {
           setLoading(false);
         }
       }
-    }
+    },
+    [],
+  );
 
-    void loadOrders();
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const timeoutId = window.setTimeout(() => {
+      void loadOrders(debouncedSearch, controller.signal);
+    }, 0);
 
     return () => {
-      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeoutId);
     };
-  }, []);
+  }, [debouncedSearch, loadOrders]);
 
   async function handleUpdateStatus(
     order: Order,
@@ -169,20 +178,6 @@ export default function AdminOrdersPage() {
     useMemo(() => {
       return orders.filter(
         (order) => {
-            const matchesKeyword =
-            matchesSearch(
-              String(order.id),
-              search,
-            ) ||
-            matchesSearch(
-              order.receiverName,
-              search,
-            ) ||
-            matchesSearch(
-              order.receiverPhone,
-              search,
-            );
-
           const matchesStatus =
             selectedStatus ===
               'ALL' ||
@@ -196,7 +191,6 @@ export default function AdminOrdersPage() {
               selectedPaymentStatus;
 
           return (
-            matchesKeyword &&
             matchesStatus &&
             matchesPayment
           );
@@ -204,7 +198,6 @@ export default function AdminOrdersPage() {
       );
     }, [
       orders,
-      search,
       selectedStatus,
       selectedPaymentStatus,
     ]);

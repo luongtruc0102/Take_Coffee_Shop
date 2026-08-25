@@ -3,6 +3,7 @@ import type {
   Order,
   OrderStatus,
   PaymentMethod,
+  ReorderOrderResult,
 } from "@/types/order";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -202,7 +203,9 @@ export async function getDeliveryLocationQuote(
 }
 
 export type CheckoutInput = {
-  cartItemIds: number[];
+  cartItemIds?: number[];
+  reorderOrderId?: number;
+  reorderOrderItemIds?: number[];
 
   receiverName: string;
   receiverPhone: string;
@@ -243,9 +246,7 @@ export async function checkoutOrder(
   return data;
 }
 
-export async function getMyOrders(
-  accessToken: string,
-): Promise<Order[]> {
+export async function getMyOrders(accessToken: string): Promise<Order[]> {
   const response = await fetch(`${getApiUrl()}/orders`, {
     headers: getHeaders(accessToken),
     cache: "no-store",
@@ -280,14 +281,15 @@ export async function getMyOrderById(
 export async function cancelMyOrder(
   accessToken: string,
   orderId: number,
+  reason: string,
 ): Promise<Order> {
-  const response = await fetch(
-    `${getApiUrl()}/orders/${orderId}/cancel`,
-    {
-      method: "PATCH",
-      headers: getHeaders(accessToken),
-    },
-  );
+  const response = await fetch(`${getApiUrl()}/orders/${orderId}/cancel`, {
+    method: "PATCH",
+    headers: getHeaders(accessToken),
+    body: JSON.stringify({
+      reason,
+    }),
+  });
 
   const data = await response.json();
 
@@ -296,9 +298,30 @@ export async function cancelMyOrder(
       ? data.message.join(", ")
       : data.message;
 
-    throw new Error(
-      message || "Không thể hủy đơn hàng",
-    );
+    throw new Error(message || "Không thể hủy đơn hàng");
+  }
+
+  return data;
+}
+
+// Chỉ gửi mã đơn; backend tự lấy cấu hình cũ và kiểm tra giá/khả dụng hiện tại.
+export async function reorderMyOrder(
+  accessToken: string,
+  orderId: number,
+): Promise<ReorderOrderResult> {
+  const response = await fetch(`${getApiUrl()}/orders/${orderId}/reorder`, {
+    method: "POST",
+    headers: getHeaders(accessToken),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const message = Array.isArray(data.message)
+      ? data.message.join(", ")
+      : data.message;
+
+    throw new Error(message || "Không thể chuẩn bị đơn hàng mua lại");
   }
 
   return data;

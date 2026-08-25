@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
+
 import { useEffect, useMemo, useState } from "react";
 
-import { Coffee, LoaderCircle, Search } from "lucide-react";
+import { Coffee, LoaderCircle, Search, Star } from "lucide-react";
 
 import {
   getPublicCategories,
@@ -11,7 +13,10 @@ import {
 
 import type { Category, Product } from "@/types/menu";
 
+import ToastMessage from "@/components/ui/toast-message";
 import ProductOrderModal from "@/components/user/product-order-modal";
+import { getProductReviewSummaries } from "@/services/review.service";
+import type { ProductReviewSummary } from "@/types/review";
 
 export default function MenuPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -37,22 +42,46 @@ export default function MenuPage() {
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
+  const [
+    reviewSummaries,
+    setReviewSummaries,
+  ] = useState<
+    Record<
+      number,
+      ProductReviewSummary
+    >
+  >({});
+
   useEffect(() => {
     async function loadMenu() {
       try {
         setLoading(true);
         setError("");
 
-        const [categoryData, productData] = await Promise.all([
+        const [
+          categoryData,
+          productData,
+          reviewSummaryData,
+        ] = await Promise.all([
           getPublicCategories(),
           getPublicProducts(),
+          getProductReviewSummaries(),
         ]);
 
         setCategories(categoryData);
-
         setProducts(productData);
-
         setAllProducts(productData);
+
+        setReviewSummaries(
+          Object.fromEntries(
+            reviewSummaryData.map(
+              (summary) => [
+                summary.productId,
+                summary,
+              ],
+            ),
+          ),
+        );
       } catch (error) {
         setError(error instanceof Error ? error.message : "Không thể tải menu");
       } finally {
@@ -232,11 +261,7 @@ export default function MenuPage() {
         </div>
       </div>
 
-      {displayedError && (
-        <div className="mx-5 mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 sm:mx-6">
-          {displayedError}
-        </div>
-      )}
+      <ToastMessage message={displayedError} />
 
       {loading ? (
         <div className="py-16 text-center text-sm text-[#78866B]">
@@ -257,6 +282,8 @@ export default function MenuPage() {
 
             const imageUrl = getProductImageUrl(product.imageUrl);
 
+            const reviewSummary = reviewSummaries[ product.id ];
+
             return (
               <article
                 key={product.id}
@@ -264,9 +291,12 @@ export default function MenuPage() {
               >
                 <div className="aspect-square overflow-hidden bg-[#F3E9DE] sm:aspect-[4/3]">
                   {imageUrl ? (
-                    <img
+                    <Image
+                      unoptimized
                       src={imageUrl}
                       alt={product.name}
+                      width={640}
+                      height={480}
                       className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     />
                   ) : (
@@ -285,9 +315,39 @@ export default function MenuPage() {
                     {product.name}
                   </h2>
 
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+                    <Star
+                      size={15}
+                      className={
+                        reviewSummary
+                          ? "fill-[#E6A23C] text-[#E6A23C]"
+                          : "text-[#C9BBB0]"
+                      }
+                    />
+
+                    {reviewSummary ? (
+                      <>
+                        <span className="font-bold text-[#4A2C20]">
+                          {
+                            reviewSummary.averageRating
+                          }
+                        </span>
+
+                        <span className="text-[#8A817B]">
+                          ({
+                            reviewSummary.reviewCount
+                          } đánh giá)
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-[#8A817B]">
+                        Chưa có đánh giá
+                      </span>
+                    )}
+                  </div>
+
                   <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-[#5E5650] sm:text-sm">
-                    {product.description ||
-                      "Một lựa chọn hấp dẫn từ Kippora."}
+                    {product.description || "Một lựa chọn hấp dẫn từ Kippora."}
                   </p>
 
                   <div className="mt-auto flex items-end justify-between gap-2 pt-4">

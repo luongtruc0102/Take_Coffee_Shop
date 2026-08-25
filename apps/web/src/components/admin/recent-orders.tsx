@@ -25,6 +25,10 @@ const statusConfig: Record<
     label: 'Đang chuẩn bị',
     className: 'bg-violet-50 text-violet-700',
   },
+  READY_FOR_PICKUP: {
+    label: 'Sẵn sàng nhận',
+    className: 'bg-teal-50 text-teal-700',
+  },
   DELIVERING: {
     label: 'Đang giao',
     className: 'bg-cyan-50 text-cyan-700',

@@ -28,36 +28,60 @@ export default function AdminLayout({
   ] = useState(false);
 
   useEffect(() => {
-    const accessToken =
-      localStorage.getItem(
-        'accessToken',
-      );
+    let cancelled = false;
 
-    const storedUser =
-      localStorage.getItem(
-        'user',
-      );
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
 
-    if (
-      !accessToken ||
-      !storedUser
-    ) {
-      router.replace(
-        '/login',
-      );
+      const accessToken =
+        localStorage.getItem(
+          'accessToken',
+        );
 
-      return;
-    }
+      const storedUser =
+        localStorage.getItem(
+          'user',
+        );
 
-    try {
-      const user =
-        JSON.parse(storedUser);
-
-      // Frontend chỉ chặn UI, backend vẫn là nơi kiểm tra quyền thật
       if (
-        user.role !==
-        'ADMIN'
+        !accessToken ||
+        !storedUser
       ) {
+        router.replace(
+          '/login',
+        );
+
+        return;
+      }
+
+      try {
+        const user =
+          JSON.parse(storedUser);
+
+        // Frontend chỉ chặn UI, backend vẫn là nơi kiểm tra quyền thật
+        if (
+          user.role !==
+          'ADMIN'
+        ) {
+          localStorage.removeItem(
+            'accessToken',
+          );
+
+          localStorage.removeItem(
+            'user',
+          );
+
+          router.replace(
+            '/login',
+          );
+
+          return;
+        }
+
+        setAuthorized(true);
+      } catch {
         localStorage.removeItem(
           'accessToken',
         );
@@ -69,24 +93,12 @@ export default function AdminLayout({
         router.replace(
           '/login',
         );
-
-        return;
       }
+    });
 
-      setAuthorized(true);
-    } catch {
-      localStorage.removeItem(
-        'accessToken',
-      );
-
-      localStorage.removeItem(
-        'user',
-      );
-
-      router.replace(
-        '/login',
-      );
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   if (!authorized) {

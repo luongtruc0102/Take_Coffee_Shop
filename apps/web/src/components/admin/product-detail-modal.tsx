@@ -1,36 +1,24 @@
-'use client';
+"use client";
 
-import {
-  useEffect,
-  useState,
-} from 'react';
+import { useEffect, useState } from "react";
 
-import {
-  LockKeyhole,
-  Pencil,
-  Plus,
-  UnlockKeyhole,
-  X,
-} from 'lucide-react';
+import { LockKeyhole, Pencil, Plus, UnlockKeyhole, X } from "lucide-react";
 
 import {
   createProductVariant,
   getAdminProductVariants,
   updateProductVariant,
   updateProductVariantStatus,
-} from '@/services/variant.service';
+} from "@/services/variant.service";
 
 import {
   addProductTopping,
   getAdminToppings,
   removeProductTopping,
-} from '@/services/topping.service';
+} from "@/services/topping.service";
 
-import type {
-  Product,
-  ProductVariant,
-  Topping,
-} from '@/types/product';
+import type { Product, ProductVariant, Topping } from "@/types/product";
+import ToastMessage from "@/components/ui/toast-message";
 
 type Props = {
   open: boolean;
@@ -44,54 +32,33 @@ export default function ProductDetailModal({
   onClose,
   onSaved,
 }: Props) {
-  const [variants, setVariants] =
-    useState<ProductVariant[]>([]);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
 
-  const [loading, setLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [saving, setSaving] =
-    useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [error, setError] =
-    useState('');
+  const [error, setError] = useState("");
 
-  const [size, setSize] =
-    useState('');
+  const [size, setSize] = useState("");
 
-  const [price, setPrice] =
-    useState('');
+  const [price, setPrice] = useState("");
 
-  const [
-    editingVariant,
-    setEditingVariant,
-  ] = useState<ProductVariant | null>(
+  const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(
     null,
   );
 
-  const [
-    toppings,
-    setToppings,
-  ] = useState<Topping[]>([]);
-  
-  const [
-    selectedToppingIds,
-    setSelectedToppingIds,
-  ] = useState<Set<number>>(
+  const [toppings, setToppings] = useState<Topping[]>([]);
+
+  const [selectedToppingIds, setSelectedToppingIds] = useState<Set<number>>(
     new Set(),
   );
-  
-  const [
-    updatingToppingId,
-    setUpdatingToppingId,
-  ] = useState<number | null>(
+
+  const [updatingToppingId, setUpdatingToppingId] = useState<number | null>(
     null,
   );
 
-  const [
-    showToppingPicker,
-    setShowToppingPicker,
-  ] = useState(false);
+  const [showToppingPicker, setShowToppingPicker] = useState(false);
 
   async function handleSaveAndClose() {
     await onSaved();
@@ -102,88 +69,64 @@ export default function ProductDetailModal({
     if (!open || !product) {
       return;
     }
-  
+
     const productId = product.id;
     const productToppings = product.toppings;
-  
+
     async function loadVariants() {
       try {
         setLoading(true);
-        setError('');
-  
-        const accessToken =
-          localStorage.getItem('accessToken');
-  
+        setError("");
+
+        const accessToken = localStorage.getItem("accessToken");
+
         if (!accessToken) {
-          throw new Error(
-            'Không tìm thấy phiên đăng nhập.',
-          );
+          throw new Error("Không tìm thấy phiên đăng nhập.");
         }
-  
-        const [
-          variantData,
-          toppingData,
-        ] = await Promise.all([
-          getAdminProductVariants(
-            accessToken,
-            productId,
-          ),
-  
-          getAdminToppings(
-            accessToken,
-          ),
+
+        const [variantData, toppingData] = await Promise.all([
+          getAdminProductVariants(accessToken, productId),
+
+          getAdminToppings(accessToken),
         ]);
-  
+
         setVariants(variantData);
         setToppings(toppingData);
-  
+
         setSelectedToppingIds(
-          new Set(
-            productToppings.map(
-              (item) => item.toppingId,
-            ),
-          ),
+          new Set(productToppings.map((item) => item.toppingId)),
         );
       } catch (error) {
         setError(
           error instanceof Error
             ? error.message
-            : 'Không thể tải thông tin sản phẩm',
+            : "Không thể tải thông tin sản phẩm",
         );
       } finally {
         setLoading(false);
       }
     }
-  
+
     loadVariants();
   }, [open, product]);
 
-  function formatCurrency(
-    value: number | string,
-  ) {
-    return new Intl.NumberFormat(
-      'vi-VN',
-      {
-        style: 'currency',
-        currency: 'VND',
-      },
-    ).format(Number(value));
+  function formatCurrency(value: number | string) {
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(Number(value));
   }
 
   function resetVariantForm() {
-    setSize('');
-    setPrice('');
+    setSize("");
+    setPrice("");
     setEditingVariant(null);
   }
 
-  function handleEdit(
-    variant: ProductVariant,
-  ) {
+  function handleEdit(variant: ProductVariant) {
     setEditingVariant(variant);
     setSize(variant.size);
-    setPrice(
-      String(variant.price),
-    );
+    setPrice(String(variant.price));
   }
 
   async function handleSaveVariant() {
@@ -193,120 +136,78 @@ export default function ProductDetailModal({
 
     try {
       setSaving(true);
-      setError('');
+      setError("");
 
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
+      const accessToken = localStorage.getItem("accessToken");
 
       if (!accessToken) {
-        throw new Error(
-          'Không tìm thấy phiên đăng nhập.',
-        );
+        throw new Error("Không tìm thấy phiên đăng nhập.");
       }
 
-      const numericPrice =
-        Number(price);
+      const numericPrice = Number(price);
 
       if (!size.trim()) {
-        throw new Error(
-          'Vui lòng nhập size.',
-        );
+        throw new Error("Vui lòng nhập size.");
       }
 
-      if (
-        Number.isNaN(numericPrice) ||
-        numericPrice < 0
-      ) {
-        throw new Error(
-          'Giá size không hợp lệ.',
-        );
+      if (Number.isNaN(numericPrice) || numericPrice < 0) {
+        throw new Error("Giá size không hợp lệ.");
       }
 
       if (editingVariant) {
-        const updated =
-          await updateProductVariant(
-            accessToken,
-            editingVariant.id,
-            {
-              size:
-                size.trim(),
-              price:
-                numericPrice,
-            },
-          );
+        const updated = await updateProductVariant(
+          accessToken,
+          editingVariant.id,
+          {
+            size: size.trim(),
+            price: numericPrice,
+          },
+        );
 
         setVariants((current) =>
           current.map((variant) =>
-            variant.id === updated.id
-              ? updated
-              : variant,
+            variant.id === updated.id ? updated : variant,
           ),
         );
       } else {
-        const created =
-          await createProductVariant(
-            accessToken,
-            product.id,
-            {
-              size:
-                size.trim(),
-              price:
-                numericPrice,
-            },
-          );
+        const created = await createProductVariant(accessToken, product.id, {
+          size: size.trim(),
+          price: numericPrice,
+        });
 
-        setVariants((current) => [
-          ...current,
-          created,
-        ]);
+        setVariants((current) => [...current, created]);
       }
 
       resetVariantForm();
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'Không thể lưu size',
-      );
+      setError(error instanceof Error ? error.message : "Không thể lưu size");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleToggleStatus(
-    variant: ProductVariant,
-  ) {
+  async function handleToggleStatus(variant: ProductVariant) {
     try {
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
+      const accessToken = localStorage.getItem("accessToken");
 
       if (!accessToken) {
         return;
       }
 
-      const updated =
-        await updateProductVariantStatus(
-          accessToken,
-          variant.id,
-          !variant.isActive,
-        );
+      const updated = await updateProductVariantStatus(
+        accessToken,
+        variant.id,
+        !variant.isActive,
+      );
 
       setVariants((current) =>
-        current.map((item) =>
-          item.id === updated.id
-            ? updated
-            : item,
-        ),
+        current.map((item) => (item.id === updated.id ? updated : item)),
       );
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
-          : 'Không thể cập nhật trạng thái size',
+          : "Không thể cập nhật trạng thái size",
       );
     }
   }
@@ -315,85 +216,51 @@ export default function ProductDetailModal({
     return null;
   }
 
-  async function handleToggleTopping(
-    topping: Topping,
-  ) {
+  async function handleToggleTopping(topping: Topping) {
     if (!product) {
       return;
     }
-  
+
     try {
-      setError('');
-  
-      setUpdatingToppingId(
-        topping.id,
-      );
-  
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
-  
+      setError("");
+
+      setUpdatingToppingId(topping.id);
+
+      const accessToken = localStorage.getItem("accessToken");
+
       if (!accessToken) {
-        throw new Error(
-          'Không tìm thấy phiên đăng nhập.',
-        );
+        throw new Error("Không tìm thấy phiên đăng nhập.");
       }
-  
-      const isSelected =
-        selectedToppingIds.has(
-          topping.id,
-        );
-  
+
+      const isSelected = selectedToppingIds.has(topping.id);
+
       if (isSelected) {
-        await removeProductTopping(
-          accessToken,
-          product.id,
-          topping.id,
-        );
-  
-        setSelectedToppingIds(
-          (current) => {
-            const next =
-              new Set(current);
-  
-            next.delete(
-              topping.id,
-            );
-  
-            return next;
-          },
-        );
+        await removeProductTopping(accessToken, product.id, topping.id);
+
+        setSelectedToppingIds((current) => {
+          const next = new Set(current);
+
+          next.delete(topping.id);
+
+          return next;
+        });
       } else {
-        await addProductTopping(
-          accessToken,
-          product.id,
-          topping.id,
-        );
-  
-        setSelectedToppingIds(
-          (current) => {
-            const next =
-              new Set(current);
-  
-            next.add(
-              topping.id,
-            );
-  
-            return next;
-          },
-        );
+        await addProductTopping(accessToken, product.id, topping.id);
+
+        setSelectedToppingIds((current) => {
+          const next = new Set(current);
+
+          next.add(topping.id);
+
+          return next;
+        });
       }
     } catch (error) {
       setError(
-        error instanceof Error
-          ? error.message
-          : 'Không thể cập nhật topping',
+        error instanceof Error ? error.message : "Không thể cập nhật topping",
       );
     } finally {
-      setUpdatingToppingId(
-        null,
-      );
+      setUpdatingToppingId(null);
     }
   }
 
@@ -421,12 +288,7 @@ export default function ProductDetailModal({
         </div>
 
         <div className="space-y-6 p-6">
-          {error && (
-            <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
+          <ToastMessage message={error} />
           <div>
             <h4 className="text-lg font-semibold text-[#1F1B18]">
               Size / Variant
@@ -440,11 +302,7 @@ export default function ProductDetailModal({
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
             <input
               value={size}
-              onChange={(event) =>
-                setSize(
-                  event.target.value,
-                )
-              }
+              onChange={(event) => setSize(event.target.value)}
               placeholder="Size: S, M, L..."
               className="h-11 rounded-xl border border-[#E9E1D8] px-4 text-sm outline-none focus:border-[#C9894B]"
             />
@@ -453,11 +311,7 @@ export default function ProductDetailModal({
               type="number"
               min="0"
               value={price}
-              onChange={(event) =>
-                setPrice(
-                  event.target.value,
-                )
-              }
+              onChange={(event) => setPrice(event.target.value)}
               placeholder="Giá"
               className="h-11 rounded-xl border border-[#E9E1D8] px-4 text-sm outline-none focus:border-[#C9894B]"
             />
@@ -465,25 +319,19 @@ export default function ProductDetailModal({
             <button
               type="button"
               disabled={saving}
-              onClick={
-                handleSaveVariant
-              }
+              onClick={handleSaveVariant}
               className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#4A2C20] px-4 text-sm font-semibold text-white transition hover:bg-[#382118] disabled:opacity-60"
             >
               <Plus size={17} />
 
-              {editingVariant
-                ? 'Lưu'
-                : 'Thêm size'}
+              {editingVariant ? "Lưu" : "Thêm size"}
             </button>
           </div>
 
           {editingVariant && (
             <button
               type="button"
-              onClick={
-                resetVariantForm
-              }
+              onClick={resetVariantForm}
               className="text-sm font-medium text-[#78866B] hover:text-[#4A2C20]"
             >
               Hủy chỉnh sửa
@@ -492,97 +340,71 @@ export default function ProductDetailModal({
 
           <div className="overflow-hidden rounded-xl border border-[#E9E1D8]">
             {loading ? (
-              <div className="p-5 text-sm text-[#78866B]">
-                Đang tải size...
-              </div>
+              <div className="p-5 text-sm text-[#78866B]">Đang tải size...</div>
             ) : variants.length === 0 ? (
               <div className="p-5 text-sm text-[#78866B]">
                 Sản phẩm chưa có size.
               </div>
             ) : (
               <div className="divide-y divide-[#F0E8E0]">
-                {variants.map(
-                  (variant) => (
-                    <div
-                      key={variant.id}
-                      className="flex items-center justify-between px-4 py-3"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div
-                          className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold ${
+                {variants.map((variant) => (
+                  <div
+                    key={variant.id}
+                    className="flex items-center justify-between px-4 py-3"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold ${
+                          variant.isActive
+                            ? "bg-[#F3E9DE] text-[#4A2C20]"
+                            : "bg-gray-100 text-gray-400"
+                        }`}
+                      >
+                        {variant.size}
+                      </div>
+
+                      <div>
+                        <p className="font-semibold text-[#1F1B18]">
+                          {formatCurrency(variant.price)}
+                        </p>
+
+                        <p
+                          className={`mt-1 text-xs ${
                             variant.isActive
-                              ? 'bg-[#F3E9DE] text-[#4A2C20]'
-                              : 'bg-gray-100 text-gray-400'
+                              ? "text-emerald-600"
+                              : "text-red-500"
                           }`}
                         >
-                          {variant.size}
-                        </div>
-
-                        <div>
-                          <p className="font-semibold text-[#1F1B18]">
-                            {formatCurrency(
-                              variant.price,
-                            )}
-                          </p>
-
-                          <p
-                            className={`mt-1 text-xs ${
-                              variant.isActive
-                                ? 'text-emerald-600'
-                                : 'text-red-500'
-                            }`}
-                          >
-                            {variant.isActive
-                              ? 'Đang hoạt động'
-                              : 'Đã khóa'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleEdit(
-                              variant,
-                            )
-                          }
-                          title="Sửa size"
-                          className="flex h-9 w-9 items-center justify-center rounded-lg text-[#78866B] transition hover:bg-[#FAF8F5] hover:text-[#C9894B]"
-                        >
-                          <Pencil
-                            size={17}
-                          />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleToggleStatus(
-                              variant,
-                            )
-                          }
-                          title={
-                            variant.isActive
-                              ? 'Khóa size'
-                              : 'Mở lại size'
-                          }
-                          className="flex h-9 w-9 items-center justify-center rounded-lg text-[#78866B] transition hover:bg-[#FAF8F5]"
-                        >
-                          {variant.isActive ? (
-                            <LockKeyhole
-                              size={17}
-                            />
-                          ) : (
-                            <UnlockKeyhole
-                              size={17}
-                            />
-                          )}
-                        </button>
+                          {variant.isActive ? "Đang hoạt động" : "Đã khóa"}
+                        </p>
                       </div>
                     </div>
-                  ),
-                )}
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(variant)}
+                        title="Sửa size"
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-[#78866B] transition hover:bg-[#FAF8F5] hover:text-[#C9894B]"
+                      >
+                        <Pencil size={17} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(variant)}
+                        title={variant.isActive ? "Khóa size" : "Mở lại size"}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-[#78866B] transition hover:bg-[#FAF8F5]"
+                      >
+                        {variant.isActive ? (
+                          <LockKeyhole size={17} />
+                        ) : (
+                          <UnlockKeyhole size={17} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -602,9 +424,7 @@ export default function ProductDetailModal({
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowToppingPicker((current) => !current)
-                  }
+                  onClick={() => setShowToppingPicker((current) => !current)}
                   className="flex items-center gap-2 rounded-xl bg-[#4A2C20] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#382118]"
                 >
                   <Plus size={17} />
@@ -629,12 +449,8 @@ export default function ProductDetailModal({
                         <button
                           key={topping.id}
                           type="button"
-                          disabled={
-                            updatingToppingId === topping.id
-                          }
-                          onClick={() =>
-                            handleToggleTopping(topping)
-                          }
+                          disabled={updatingToppingId === topping.id}
+                          onClick={() => handleToggleTopping(topping)}
                           className="flex items-center justify-between rounded-xl border border-[#E9E1D8] bg-white px-4 py-3 text-left transition hover:border-[#C9894B] hover:bg-[#FFF8F0]"
                         >
                           <div>
@@ -653,8 +469,7 @@ export default function ProductDetailModal({
 
                     {toppings.filter(
                       (topping) =>
-                        topping.isActive &&
-                        !selectedToppingIds.has(topping.id),
+                        topping.isActive && !selectedToppingIds.has(topping.id),
                     ).length === 0 && (
                       <p className="text-sm text-[#78866B]">
                         Không còn topping nào để thêm.
@@ -672,9 +487,7 @@ export default function ProductDetailModal({
                 ) : (
                   <div className="divide-y divide-[#F0E8E0]">
                     {toppings
-                      .filter((topping) =>
-                        selectedToppingIds.has(topping.id),
-                      )
+                      .filter((topping) => selectedToppingIds.has(topping.id))
                       .map((topping) => (
                         <div
                           key={topping.id}
@@ -692,12 +505,8 @@ export default function ProductDetailModal({
 
                           <button
                             type="button"
-                            disabled={
-                              updatingToppingId === topping.id
-                            }
-                            onClick={() =>
-                              handleToggleTopping(topping)
-                            }
+                            disabled={updatingToppingId === topping.id}
+                            onClick={() => handleToggleTopping(topping)}
                             className="rounded-lg px-3 py-2 text-sm font-medium text-red-500 transition hover:bg-red-50"
                           >
                             Gỡ
@@ -707,7 +516,7 @@ export default function ProductDetailModal({
                   </div>
                 )}
               </div>
-              
+
               <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#E9E1D8] bg-white px-6 py-4">
                 <button
                   type="button"

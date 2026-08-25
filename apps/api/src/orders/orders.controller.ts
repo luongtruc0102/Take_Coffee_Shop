@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AddressSuggestionsDto } from './dto/address-suggestions.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
 import { CheckoutDto } from './dto/checkout.dto';
 import { DeliveryLocationQuoteDto } from './dto/delivery-location-quote.dto';
 import { DeliveryQuoteDto } from './dto/delivery-quote.dto';
@@ -77,9 +78,23 @@ export class OrdersController {
   @Patch(':id/cancel')
   cancelMyOrder(
     @Req() request: AuthenticatedRequest,
+    @Body() cancelOrderDto: CancelOrderDto,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.ordersService.cancelMyOrder(request.user.sub, id);
+    return this.ordersService.cancelMyOrder(
+      request.user.sub,
+      id,
+      cancelOrderDto.reason,
+    );
+  }
+
+  // Mua lại chỉ khôi phục cấu hình món; không sao chép ưu đãi hay thông tin checkout cũ.
+  @Post(':id/reorder')
+  reorderMyOrder(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.ordersService.reorderMyOrder(request.user.sub, id);
   }
 
   // ADMIN và STAFF xem toàn bộ đơn hàng

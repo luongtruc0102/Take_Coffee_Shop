@@ -23,6 +23,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
+import ToastMessage from "@/components/ui/toast-message";
 
 import { getCart } from "@/services/cart.service";
 
@@ -31,6 +32,7 @@ import {
   getAddressSuggestions,
   getDeliveryLocationQuote,
   getDeliveryQuote,
+  reorderMyOrder,
   type AddressSuggestion,
   type RouteCoordinate,
 } from "@/services/order.service";
@@ -39,11 +41,21 @@ import { getMe } from "@/services/auth.service";
 
 import { getCheckoutVouchers } from "@/services/voucher.service";
 
+import {
+  getMyAddresses,
+} from "@/services/address.service";
+
+import type {
+  UserAddress,
+} from "@/types/address";
+
 import type { Cart } from "@/types/cart";
 
 import type { CheckoutVoucher } from "@/types/voucher";
 
 import type { FulfillmentMethod, PaymentMethod } from "@/types/order";
+
+import { consumeReorderCheckoutMessage } from "@/utils/cart.util";
 
 const DeliveryRouteMap = dynamic(
   () => import("@/components/user/delivery-route-map"),
@@ -63,6 +75,7 @@ export default function CheckoutPage() {
   const [cart, setCart] = useState<Cart | null>(null);
 
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
+  const [reorderOrderId, setReorderOrderId] = useState<number | null>(null);
 
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
 
@@ -120,9 +133,34 @@ export default function CheckoutPage() {
 
   const [error, setError] = useState("");
 
+  const [reorderMessage, setReorderMessage] = useState("");
+
+  // Sổ địa chỉ dùng để chọn nhanh thông tin nhận hàng.
+  const [
+    savedAddresses,
+    setSavedAddresses,
+  ] = useState<UserAddress[]>(
+    [],
+  );
+
+  const [
+    selectedSavedAddressId,
+    setSelectedSavedAddressId,
+  ] = useState<
+    number | null
+  >(null);
+
+  const pendingReorderMessage = useRef<string | null | undefined>(undefined);
+
   // Khôi phục danh sách CartItem đã chọn và dữ liệu user khi mở checkout.
   useEffect(() => {
-    // Xác thực session, loại ID không còn trong giỏ rồi tải voucher phù hợp.
+    // Giữ qua React Strict Mode để thông báo mua lại không bị consume hai lần.
+    if (pendingReorderMessage.current === undefined) {
+      pendingReorderMessage.current = consumeReorderCheckoutMessage();
+    }
+    setReorderMessage(pendingReorderMessage.current ?? "");
+
+    // Dựng checkout từ giỏ hoặc preview đơn cũ; hai nguồn không trộn lẫn nhau.
     async function loadCheckout() {
       try {
         setLoading(true);
@@ -136,34 +174,56 @@ export default function CheckoutPage() {
           return;
         }
 
-        const storedIds = sessionStorage.getItem("checkoutItemIds");
-
-        if (!storedIds) {
-          router.replace("/cart");
-
-          return;
-        }
-
-        const ids = JSON.parse(storedIds) as number[];
-
-        if (!Array.isArray(ids) || ids.length === 0) {
-          router.replace("/cart");
-
-          return;
-        }
-
-        const [cartData, userData] = await Promise.all([
-          getCart(accessToken),
-
-          getMe(accessToken),
-        ]);
-
-        const validIds = ids.filter((id) =>
-          cartData.items.some((item) => item.id === id),
+        // Mã đơn trên URL là nguồn chính để refresh trang vẫn giữ luồng mua lại.
+        const reorderOrderIdFromUrl = new URLSearchParams(
+          window.location.search,
+        ).get("reorderOrderId");
+        const legacyReorderOrderId = sessionStorage.getItem(
+          "checkoutReorderOrderId",
         );
+        const reorderSourceId = reorderOrderIdFromUrl ?? legacyReorderOrderId;
+        const isReorder = Boolean(reorderSourceId);
+        const storedCartItemIds = sessionStorage.getItem("checkoutItemIds");
+
+        let cartData: Cart;
+        let validIds: number[];
+
+        if (isReorder) {
+          const sourceOrderId = Number(reorderSourceId);
+
+          if (!Number.isInteger(sourceOrderId) || sourceOrderId <= 0) {
+            router.replace("/orders");
+            return;
+          }
+
+          const preview = await reorderMyOrder(accessToken, sourceOrderId);
+          cartData = preview.cart;
+          // Mua lại luôn chọn toàn bộ dòng còn khả dụng với quantity của đơn cũ.
+          validIds = preview.selectedCartItemIds.filter((id) =>
+            cartData.items.some((item) => item.id === id),
+          );
+          setReorderOrderId(sourceOrderId);
+        } else {
+          if (!storedCartItemIds) {
+            router.replace("/cart");
+            return;
+          }
+
+          const requestedIds = JSON.parse(storedCartItemIds) as number[];
+          if (!Array.isArray(requestedIds) || requestedIds.length === 0) {
+            router.replace("/cart");
+            return;
+          }
+
+          cartData = await getCart(accessToken);
+          validIds = requestedIds.filter((id) =>
+            cartData.items.some((item) => item.id === id),
+          );
+          setReorderOrderId(null);
+        }
 
         if (validIds.length === 0) {
-          router.replace("/cart");
+          router.replace(isReorder ? "/orders" : "/cart");
 
           return;
         }
@@ -172,10 +232,22 @@ export default function CheckoutPage() {
           .filter((item) => validIds.includes(item.id))
           .reduce((total, item) => total + Number(item.lineTotal), 0);
 
-        const availableVouchers = await getCheckoutVouchers(
-          accessToken,
-          checkoutSubtotal,
-        );
+          const [
+            availableVouchers,
+            userData,
+            addressData,
+          ] = await Promise.all([
+            getCheckoutVouchers(
+              accessToken,
+              checkoutSubtotal,
+            ),
+
+            getMe(accessToken),
+
+            getMyAddresses(
+              accessToken,
+            ),
+          ]);
 
         setCart(cartData);
 
@@ -183,13 +255,79 @@ export default function CheckoutPage() {
 
         setVouchers(availableVouchers);
 
-        setReceiverName(userData.fullName ?? "");
+        setSavedAddresses(
+          addressData,
+        );
 
-        setReceiverPhone(userData.phone ?? "");
+        const defaultAddress =
+          addressData.find(
+            (address) =>
+              address.isDefault,
+          ) ??
+          addressData[0] ??
+          null;
 
-        setDeliveryAddress(userData.address ?? "");
+        if (defaultAddress) {
+          const coordinate = {
+            latitude: Number(
+              defaultAddress.latitude,
+            ),
 
-        setLoyaltyPoints(userData.loyaltyPoints ?? 0);
+            longitude: Number(
+              defaultAddress.longitude,
+            ),
+          };
+
+          setSelectedSavedAddressId(
+            defaultAddress.id,
+          );
+
+          setReceiverName(
+            defaultAddress.receiverName,
+          );
+
+          setReceiverPhone(
+            defaultAddress.receiverPhone,
+          );
+
+          setDeliveryAddress(
+            defaultAddress.addressLine,
+          );
+
+          // Lưu tọa độ để effect tính tuyến bằng vị trí chính xác,
+          // không phải geocode lại chuỗi địa chỉ.
+          resolvedDeliveryLocation.current = {
+            address:
+              defaultAddress.addressLine,
+
+            latitude:
+              coordinate.latitude,
+
+            longitude:
+              coordinate.longitude,
+          };
+        } else {
+          // Tài khoản cũ chưa có sổ địa chỉ vẫn dùng dữ liệu User hiện tại.
+          setSelectedSavedAddressId(
+            null,
+          );
+
+          setReceiverName(
+            userData.fullName ?? "",
+          );
+
+          setReceiverPhone(
+            userData.phone ?? "",
+          );
+
+          setDeliveryAddress(
+            userData.address ?? "",
+          );
+        }
+
+        setLoyaltyPoints(
+          userData.loyaltyPoints ?? 0,
+        );
       } catch (error) {
         setError(
           error instanceof Error
@@ -468,6 +606,99 @@ export default function CheckoutPage() {
     subtotal,
   ]);
 
+  // Điền thông tin người nhận từ địa chỉ đã lưu và tính tuyến ngay.
+  function handleSavedAddressSelect(
+    value: string,
+  ) {
+    if (value === "MANUAL") {
+      deliveryRequestId.current += 1;
+      addressSuggestionRequestId.current += 1;
+
+      setSelectedSavedAddressId(
+        null,
+      );
+
+      setDeliveryAddress("");
+
+      setAddressSuggestions([]);
+      setAddressSuggestionStatus(
+        "idle",
+      );
+
+      setShowAddressSuggestions(
+        false,
+      );
+
+      setCustomerCoordinates(
+        null,
+      );
+
+      setRouteCoordinates([]);
+      setDistanceKm(null);
+      setDeliveryError("");
+
+      resolvedDeliveryLocation.current =
+        null;
+
+      skipAutomaticAddressQuote.current =
+        null;
+
+      return;
+    }
+
+    const addressId =
+      Number(value);
+
+    const selectedAddress =
+      savedAddresses.find(
+        (address) =>
+          address.id ===
+          addressId,
+      );
+
+    if (!selectedAddress) {
+      return;
+    }
+
+    const coordinate = {
+      latitude: Number(
+        selectedAddress.latitude,
+      ),
+
+      longitude: Number(
+        selectedAddress.longitude,
+      ),
+    };
+
+    setSelectedSavedAddressId(
+      selectedAddress.id,
+    );
+
+    setReceiverName(
+      selectedAddress.receiverName,
+    );
+
+    setReceiverPhone(
+      selectedAddress.receiverPhone,
+    );
+
+    resolvedDeliveryLocation.current = {
+      address:
+        selectedAddress.addressLine,
+
+      latitude:
+        coordinate.latitude,
+
+      longitude:
+        coordinate.longitude,
+    };
+
+    void calculateDeliveryFromCoordinates(
+      coordinate,
+      selectedAddress.addressLine,
+    );
+  }
+
   // Dùng tọa độ từ gợi ý hoặc cú chạm bản đồ để tính lại tuyến đường ngay,
   // đồng thời đồng bộ địa chỉ chuẩn hóa mà backend trả về.
   async function calculateDeliveryFromCoordinates(
@@ -586,7 +817,9 @@ export default function CheckoutPage() {
           : deliveryAddress.trim();
 
       const order = await checkoutOrder(accessToken, {
-        cartItemIds: selectedItemIds,
+        cartItemIds: reorderOrderId ? undefined : selectedItemIds,
+        reorderOrderId: reorderOrderId ?? undefined,
+        reorderOrderItemIds: reorderOrderId ? selectedItemIds : undefined,
 
         receiverName: receiverName.trim(),
 
@@ -608,6 +841,8 @@ export default function CheckoutPage() {
 
       // Không giữ lựa chọn checkout cũ sau khi đặt hàng thành công
       sessionStorage.removeItem("checkoutItemIds");
+      sessionStorage.removeItem("checkoutReorderOrderId");
+      sessionStorage.removeItem("checkoutReorderOrderItemIds");
 
       router.replace(`/orders/${order.id}`);
     } catch (error) {
@@ -632,7 +867,7 @@ export default function CheckoutPage() {
     >
       <div className="flex items-center gap-3">
         <Link
-          href="/cart"
+          href={reorderOrderId ? `/orders/${reorderOrderId}` : "/cart"}
           className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#E9E1D8] bg-white text-[#4A2C20]"
         >
           <ArrowLeft size={18} />
@@ -647,11 +882,9 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      <ToastMessage message={reorderMessage} variant="info" />
+      <ToastMessage message={error} />
+      <ToastMessage message={deliveryError} />
 
       <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_440px]">
         <div className="space-y-5">
@@ -662,6 +895,69 @@ export default function CheckoutPage() {
 
               <h2 className="font-bold text-[#2A211D]">Thông tin nhận hàng</h2>
             </div>
+
+            {savedAddresses.length > 0 && (
+              <div className="mt-5 rounded-2xl border border-[#E9E1D8] bg-[#FAF8F5] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-[#2A211D]">
+                      Địa chỉ đã lưu
+                    </p>
+
+                    <p className="mt-1 text-xs text-[#78866B]">
+                      Chọn để điền nhanh thông tin nhận hàng.
+                    </p>
+                  </div>
+
+                  <Link
+                    href="/profile"
+                    className="text-xs font-semibold text-[#B66F32]"
+                  >
+                    Quản lý địa chỉ
+                  </Link>
+                </div>
+
+                <select
+                  value={
+                    selectedSavedAddressId !==
+                    null
+                      ? String(
+                          selectedSavedAddressId,
+                        )
+                      : "MANUAL"
+                  }
+                  onChange={(event) =>
+                    handleSavedAddressSelect(
+                      event.target.value,
+                    )
+                  }
+                  className="mt-3 h-12 w-full cursor-pointer rounded-xl border border-[#E9E1D8] bg-white px-4 text-sm outline-none focus:border-[#C9894B]"
+                >
+                  {savedAddresses.map(
+                    (address) => (
+                      <option
+                        key={address.id}
+                        value={address.id}
+                      >
+                        {address.label}
+                        {address.isDefault
+                          ? " · Mặc định"
+                          : ""}
+                        {" · "}
+                        {address.receiverName}
+                        {" · "}
+                        {address.addressLine}
+                      </option>
+                    ),
+                  )}
+
+                  <option value="MANUAL">
+                    Nhập địa chỉ khác
+                  </option>
+                </select>
+              </div>
+            )}
+
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#5E5650]">
@@ -676,7 +972,11 @@ export default function CheckoutPage() {
 
                   <input
                     value={receiverName}
-                    onChange={(event) => setReceiverName(event.target.value)}
+                    onChange={(event) => {
+                      setReceiverName(
+                        event.target.value,
+                      );
+                    }}
                     required
                     minLength={2}
                     className="h-11 w-full rounded-xl border border-[#E9E1D8] pl-10 pr-4 text-sm outline-none focus:border-[#C9894B]"
@@ -697,7 +997,11 @@ export default function CheckoutPage() {
 
                   <input
                     value={receiverPhone}
-                    onChange={(event) => setReceiverPhone(event.target.value)}
+                    onChange={(event) => {
+                      setReceiverPhone(
+                        event.target.value,
+                      );
+                    }}
                     required
                     minLength={8}
                     className="h-11 w-full rounded-xl border border-[#E9E1D8] pl-10 pr-4 text-sm outline-none focus:border-[#C9894B]"
@@ -727,6 +1031,7 @@ export default function CheckoutPage() {
                     addressSuggestionRequestId.current += 1;
                     skipAutomaticAddressQuote.current = null;
                     resolvedDeliveryLocation.current = null;
+                    setSelectedSavedAddressId(null);
                     setDeliveryAddress(event.target.value);
                     setShowAddressSuggestions(true);
                     setAddressSuggestions([]);
@@ -916,10 +1221,6 @@ export default function CheckoutPage() {
               </p>
             )}
 
-            {deliveryError && (
-              <p className="mt-3 text-sm text-red-600">{deliveryError}</p>
-            )}
-
             {distanceKm !== null && fulfillmentMethod === "DELIVERY" && (
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-xl bg-[#FAF8F5] p-3">
@@ -1060,11 +1361,10 @@ export default function CheckoutPage() {
                   value={loyaltyPointsToUse || ""}
                   onChange={(event) => {
                     // Chuẩn hóa chuỗi số để không giữ các số 0 ở đầu.
-                    const normalizedValue =
-                      event.target.value.replace(
-                        /^0+(?=\d)/,
-                        "",
-                      );
+                    const normalizedValue = event.target.value.replace(
+                      /^0+(?=\d)/,
+                      "",
+                    );
 
                     handlePointsChange(Number(normalizedValue));
                   }}
@@ -1261,7 +1561,9 @@ export default function CheckoutPage() {
           </div>
           <div className="mt-4 border-t border-[#E9E1D8] pt-4">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-[#2A211D]">Tổng thanh toán</span>
+              <span className="font-semibold text-[#2A211D]">
+                Tổng thanh toán
+              </span>
               <span className="text-xl font-bold text-[#4A2C20]">
                 {formatCurrency(
                   Math.max(

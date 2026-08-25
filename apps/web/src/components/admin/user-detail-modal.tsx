@@ -1,5 +1,7 @@
 'use client';
 
+import Image from 'next/image';
+
 import {
   BadgePercent,
   CalendarDays,
@@ -72,6 +74,13 @@ function getOrderStatusMeta(
           'bg-orange-50 text-orange-700',
       };
 
+    case 'READY_FOR_PICKUP':
+      return {
+        label: 'Sẵn sàng nhận',
+        className:
+          'bg-teal-50 text-teal-700',
+      };
+
     case 'DELIVERING':
       return {
         label: 'Đang giao',
@@ -141,12 +150,15 @@ export default function UserDetailModal({
 
           <div className="flex items-center gap-5">
             {user.avatarUrl ? (
-              <img
+              <Image
+                unoptimized
                 src={user.avatarUrl}
                 alt={
                   user.fullName ??
                   'Avatar'
                 }
+                width={80}
+                height={80}
                 className="h-20 w-20 shrink-0 rounded-2xl object-cover ring-4 ring-white"
               />
             ) : (

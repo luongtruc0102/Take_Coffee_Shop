@@ -34,6 +34,7 @@ export type AdminUser = {
       | 'PENDING'
       | 'CONFIRMED'
       | 'PREPARING'
+      | 'READY_FOR_PICKUP'
       | 'DELIVERING'
       | 'COMPLETED'
       | 'CANCELLED';

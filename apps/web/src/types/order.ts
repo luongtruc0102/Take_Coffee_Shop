@@ -1,28 +1,36 @@
+import type { Cart } from "./cart";
+
+export type ReorderSkippedItem = {
+  orderItemId: number;
+  productName: string;
+  reason: string;
+};
+
+// Preview có cùng cấu trúc Cart để checkout tái sử dụng UI, nhưng không phải giỏ DB.
+export type ReorderOrderResult = {
+  sourceOrderId: number;
+  cart: Cart;
+  selectedCartItemIds: number[];
+  addedItemCount: number;
+  skippedItems: ReorderSkippedItem[];
+};
+
 export type OrderStatus =
-  | 'PENDING'
-  | 'CONFIRMED'
-  | 'PREPARING'
-  | 'DELIVERING'
-  | 'COMPLETED'
-  | 'CANCELLED';
+  | "PENDING"
+  | "CONFIRMED"
+  | "PREPARING"
+  | "READY_FOR_PICKUP"
+  | "DELIVERING"
+  | "COMPLETED"
+  | "CANCELLED";
 
-export type PaymentMethod =
-  | 'COD'
-  | 'BANK_TRANSFER';
+export type PaymentMethod = "COD" | "BANK_TRANSFER";
 
-export type FulfillmentMethod =
-  | 'DELIVERY'
-  | 'PICKUP';
+export type FulfillmentMethod = "DELIVERY" | "PICKUP";
 
-export type PaymentStatus =
-  | 'PENDING'
-  | 'PAID'
-  | 'FAILED'
-  | 'CANCELLED';
+export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "CANCELLED";
 
-export type DiscountType =
-  | 'PERCENT'
-  | 'FIXED';
+export type DiscountType = "PERCENT" | "FIXED";
 
 export type OrderUser = {
   id: number;
@@ -63,11 +71,9 @@ export type OrderVoucher = {
   id: number;
   code: string;
 
-  discountType:
-    DiscountType;
+  discountType: DiscountType;
 
-  discountValue:
-    number | string;
+  discountValue: number | string;
 };
 
 export type OrderPayment = {
@@ -79,8 +85,7 @@ export type OrderPayment = {
 
   amount: number | string;
 
-  transactionCode:
-    string | null;
+  transactionCode: string | null;
 
   paidAt: string | null;
 
@@ -100,15 +105,11 @@ export type Order = {
 
   loyaltyPointsUsed: number;
 
-  loyaltyDiscountAmount:
-    | number
-    | string;
+  loyaltyDiscountAmount: number | string;
 
   loyaltyPointsEarned: number;
 
-  loyaltyPointsGrantedAt:
-    | string
-    | null;
+  loyaltyPointsGrantedAt: string | null;
 
   fulfillmentMethod: FulfillmentMethod;
   receiverName: string;
@@ -124,12 +125,12 @@ export type Order = {
   note: string | null;
 
   status: OrderStatus;
+  cancelReason: string | null;
+  cancelledAt: string | null;
 
-  voucherId:
-    number | null;
+  voucherId: number | null;
 
-  voucher:
-    OrderVoucher | null;
+  voucher: OrderVoucher | null;
 
   appliedVouchers?: Array<{
     orderId: number;
@@ -139,11 +140,9 @@ export type Order = {
     voucher?: OrderVoucher;
   }>;
 
-  voucherCode:
-    string | null;
+  voucherCode: string | null;
 
-  payment:
-    OrderPayment | null;
+  payment: OrderPayment | null;
 
   items: OrderItem[];
 

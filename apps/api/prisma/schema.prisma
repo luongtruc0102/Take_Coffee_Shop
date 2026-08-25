@@ -54,6 +54,18 @@ model User {
   // Các đơn hàng mà user đã đặt
   orders Order[]
 
+  // Danh sách địa chỉ giao hàng đã lưu của khách.
+  addresses UserAddress[]
+
+  // Các đánh giá do khách tạo
+  orderReviews OrderReview[] @relation("ReviewAuthor")
+
+  // Các đánh giá mà Admin đã phản hồi
+  reviewReplies OrderReview[] @relation("ReviewResponder")
+
+  // Thông báo bền vững để user xem lại trên mọi thiết bị
+  notifications Notification[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -96,6 +108,9 @@ model Product {
 
   // Các OrderItem từng mua sản phẩm này
   orderItems OrderItem[]
+
+  // Các lượt đánh giá sản phẩm từ những đơn đã hoàn tất
+  productReviews ProductReview[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -231,6 +246,7 @@ enum OrderStatus {
   PENDING
   CONFIRMED
   PREPARING
+  READY_FOR_PICKUP
   DELIVERING
   COMPLETED
   CANCELLED
@@ -276,8 +292,13 @@ model Order {
 
   status OrderStatus @default(PENDING)
 
+  // Dấu vết hủy đơn để khách hàng và cửa hàng cùng tra cứu được nguyên nhân.
+  cancelReason String?
+  cancelledAt  DateTime?
+
   items           OrderItem[]
   appliedVouchers OrderVoucher[]
+  notifications   Notification[]
 
   // Voucher đã áp dụng cho đơn hàng
   voucherId Int?
@@ -288,6 +309,9 @@ model Order {
 
   // Thông tin thanh toán của đơn hàng
   payment Payment?
+
+  // Mỗi đơn hàng chỉ được đánh giá một lần
+  review OrderReview?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -307,6 +331,30 @@ model Order {
   @@index([userId])
   @@index([status])
   @@index([voucherId])
+}
+
+// Thông báo của user; orderId có thể null cho thông báo hệ thống sau này.
+model Notification {
+  id Int @id @default(autoincrement())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  orderId Int?
+  order   Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  type    String
+  title   String
+  message String
+  isRead  Boolean @default(false)
+  readAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@index([orderId])
 }
 
 // Một sản phẩm trong đơn hàng
@@ -342,6 +390,9 @@ model OrderItem {
 
   createdAt DateTime @default(now())
 
+  // Mỗi dòng món trong đơn chỉ có tối đa một đánh giá
+  productReview ProductReview?
+
   @@index([orderId])
   @@index([productId])
   @@index([variantId])
@@ -364,6 +415,78 @@ model OrderItemTopping {
 
   @@index([orderItemId])
   @@index([toppingId])
+}
+
+// Đánh giá tổng thể của một đơn hàng đã hoàn tất
+model OrderReview {
+  id Int @id @default(autoincrement())
+
+  // Người tạo đánh giá
+  userId Int
+  user   User @relation("ReviewAuthor", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Một đơn chỉ có tối đa một đánh giá
+  orderId Int   @unique
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Điểm tổng thể từ 1 đến 5
+  overallRating Int
+
+  // Nhận xét chung về đơn hàng
+  comment String?
+
+  // Admin có thể ẩn đánh giá vi phạm
+  isVisible Boolean @default(true)
+
+  // Phản hồi chính thức của cửa hàng
+  adminReply String?
+
+  // Admin đã phản hồi
+  adminRepliedById Int?
+  adminRepliedBy   User? @relation("ReviewResponder", fields: [adminRepliedById], references: [id], onDelete: SetNull)
+
+  // Thời điểm phản hồi gần nhất
+  adminRepliedAt DateTime?
+
+  // Đánh giá riêng từng món
+  productReviews ProductReview[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([isVisible])
+  @@index([createdAt])
+  @@index([adminRepliedById])
+}
+
+// Đánh giá một món cụ thể trong đơn hàng
+model ProductReview {
+  id Int @id @default(autoincrement())
+
+  orderReviewId Int
+  orderReview   OrderReview @relation(fields: [orderReviewId], references: [id], onDelete: Cascade)
+
+  // Một OrderItem chỉ được đánh giá một lần
+  orderItemId Int       @unique
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  // Backend tự lấy productId từ OrderItem
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+
+  // Điểm món từ 1 đến 5
+  rating Int
+
+  // Nhận xét riêng về món
+  comment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderReviewId])
+  @@index([productId])
+  @@index([rating])
 }
 
 // Kiểu giảm giá của voucher
@@ -471,4 +594,33 @@ model Payment {
 
   @@index([status])
   @@index([method])
+}
+
+// Địa chỉ giao hàng được user lưu để tái sử dụng ở checkout.
+model UserAddress {
+  id Int @id @default(autoincrement())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Ví dụ: Nhà riêng, Công ty, Nhà người thân.
+  label String @db.VarChar(30)
+
+  receiverName  String @db.VarChar(100)
+  receiverPhone String @db.VarChar(20)
+
+  // Địa chỉ đầy đủ sau khi khách chọn từ gợi ý hoặc bản đồ.
+  addressLine String @db.VarChar(500)
+
+  // Lưu tọa độ để checkout không phải tìm lại vị trí.
+  latitude  Decimal @db.Decimal(10, 7)
+  longitude Decimal @db.Decimal(10, 7)
+
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, isDefault])
 }

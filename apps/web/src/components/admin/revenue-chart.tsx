@@ -64,7 +64,7 @@ export default function RevenueChart({
         value,
       )
     ) {
-      const [year, month, day] =
+      const [, month, day] =
         value.split('-');
 
       return `${day}/${month}`;

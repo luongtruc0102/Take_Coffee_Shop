@@ -20,6 +20,7 @@ import {
 } from 'next/navigation';
 
 import BrandLogo from '@/components/brand/brand-logo';
+import NotificationBell from '@/components/user/notification-bell';
 
 import { getCart } from '@/services/cart.service';
 
@@ -28,12 +29,10 @@ import {
   getCartItemCount,
 } from '@/utils/cart.util';
 
-type CurrentUser = {
-  id: number;
-  email: string;
-  fullName: string;
-  role: string;
-};
+import {
+  AUTH_USER_UPDATED_EVENT,
+  type StoredAuthUser,
+} from '@/utils/auth.util';
 
 const navItems = [
   {
@@ -59,7 +58,7 @@ export default function UserHeader() {
     user,
     setUser,
   ] =
-    useState<CurrentUser | null>(
+    useState<StoredAuthUser | null>(
       null,
     );
 
@@ -88,10 +87,29 @@ export default function UserHeader() {
       }
     }
 
+    // Nhận hồ sơ mới sau khi user cập nhật tên, phone hoặc avatar.
+    function handleUserUpdated(
+      event: Event,
+    ) {
+      const userEvent =
+        event as CustomEvent<
+          StoredAuthUser
+        >;
+
+      setUser(
+        userEvent.detail,
+      );
+    }
+
     // Cập nhật badge ngay khi giỏ đổi mà không cần tải lại trang.
     window.addEventListener(
       CART_UPDATED_EVENT,
       handleCartUpdated,
+    );
+
+    window.addEventListener(
+      AUTH_USER_UPDATED_EVENT,
+      handleUserUpdated,
     );
 
     // Chạy sau khi component mount để chỉ đọc localStorage ở phía browser.
@@ -109,7 +127,7 @@ export default function UserHeader() {
         const parsedUser =
           JSON.parse(
             storedUser,
-          ) as CurrentUser;
+          ) as StoredAuthUser;
 
         setUser(parsedUser);
 
@@ -153,6 +171,11 @@ export default function UserHeader() {
         CART_UPDATED_EVENT,
         handleCartUpdated,
       );
+
+      window.removeEventListener(
+        AUTH_USER_UPDATED_EVENT,
+        handleUserUpdated,
+      );
     };
   }, []);
 
@@ -179,7 +202,8 @@ export default function UserHeader() {
 
   return (
     <>
-       <header className="fixed inset-x-0 top-0 z-40 border-b border-[#E9E1D8] bg-white/95 backdrop-blur">
+      {/* Cao hơn dropdown checkout/Leaflet nhưng vẫn thấp hơn overlay và modal. */}
+      <header className="fixed inset-x-0 top-0 z-[1000] border-b border-[#E9E1D8] bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link
             href="/"
@@ -211,6 +235,8 @@ export default function UserHeader() {
           </nav>
   
           <div className="flex items-center gap-2">
+            {user && <NotificationBell />}
+
             <Link
               href="/cart"
               title="Giỏ hàng"
@@ -232,8 +258,20 @@ export default function UserHeader() {
                 href="/profile"
                 className="hidden items-center gap-2 rounded-xl bg-[#FAF8F5] px-3 py-2 sm:flex"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F3E9DE] text-[#4A2C20]">
-                  <UserRound size={17} />
+                <div
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F3E9DE] bg-cover bg-center text-[#4A2C20]"
+                  style={
+                    user.avatarUrl
+                      ? {
+                          backgroundImage:
+                            `url("${user.avatarUrl}")`,
+                        }
+                      : undefined
+                  }
+                >
+                  {!user.avatarUrl && (
+                    <UserRound size={17} />
+                  )}
                 </div>
   
                 <span className="max-w-[130px] truncate text-sm font-semibold text-[#1F1B18]">
@@ -359,8 +397,20 @@ export default function UserHeader() {
               }
               className="flex items-center gap-3 rounded-2xl bg-[#F7F2EC] p-3 transition hover:bg-[#F3E9DE]"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#EADBCB] text-[#4A2C20]">
-                <UserRound size={18} />
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EADBCB] bg-cover bg-center text-[#4A2C20]"
+                style={
+                  user.avatarUrl
+                    ? {
+                        backgroundImage:
+                          `url("${user.avatarUrl}")`,
+                      }
+                    : undefined
+                }
+              >
+                {!user.avatarUrl && (
+                  <UserRound size={18} />
+                )}
               </div>
 
               <div className="min-w-0">

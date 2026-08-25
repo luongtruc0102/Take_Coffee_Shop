@@ -36,6 +36,11 @@ const statusConfig: Record<
     color: '#9B7ED9',
   },
 
+  READY_FOR_PICKUP: {
+    label: 'Sẵn sàng nhận',
+    color: '#2A9D8F',
+  },
+
   DELIVERING: {
     label: 'Đang giao',
     color: '#4FA3B8',

@@ -1,11 +1,6 @@
-'use client';
+"use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   ChevronDown,
@@ -14,109 +9,71 @@ import {
   Plus,
   Search,
   UnlockKeyhole,
-} from 'lucide-react';
+} from "lucide-react";
 
 import {
   getAdminVouchers,
   updateVoucherStatus,
-} from '@/services/voucher.service';
+} from "@/services/voucher.service";
 
-import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import type { Voucher } from '@/types/voucher';
-import VoucherFormModal from '@/components/admin/voucher-form-modal';
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import type { Voucher } from "@/types/voucher";
+import VoucherFormModal from "@/components/admin/voucher-form-modal";
+import ToastMessage from "@/components/ui/toast-message";
 
-type ValidityFilter =
-  | 'ALL'
-  | 'UPCOMING'
-  | 'ACTIVE'
-  | 'EXPIRED';
+type ValidityFilter = "ALL" | "UPCOMING" | "ACTIVE" | "EXPIRED";
 
 export default function AdminVouchersPage() {
-  const [vouchers, setVouchers] =
-    useState<Voucher[]>([]);
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [error, setError] =
-    useState('');
+  const [error, setError] = useState("");
 
-  const [search, setSearch] =
-    useState('');
+  const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
 
+  const [selectedStatus, setSelectedStatus] = useState("ALL");
 
-  const [
-    selectedStatus,
-    setSelectedStatus,
-  ] = useState('ALL');
+  const [selectedValidity, setSelectedValidity] =
+    useState<ValidityFilter>("ALL");
 
-  const [
-    selectedValidity,
-    setSelectedValidity,
-  ] =
-    useState<ValidityFilter>(
-      'ALL',
-    );
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
 
-  const [
-    updatingId,
-    setUpdatingId,
-  ] = useState<number | null>(
-    null,
-  );
+  const [formOpen, setFormOpen] = useState(false);
 
-  const [
-    formOpen,
-    setFormOpen,
-  ] = useState(false);
-  
-  const [
-    editingVoucher,
-    setEditingVoucher,
-  ] = useState<Voucher | null>(
-    null,
-  );
+  const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null);
 
-  const loadVouchers = useCallback(
-    async (query = '', signal?: AbortSignal) => {
-      await Promise.resolve();
+  const loadVouchers = useCallback(async (query = "", signal?: AbortSignal) => {
+    await Promise.resolve();
 
-      try {
-        setLoading(true);
-        setError('');
+    try {
+      setLoading(true);
+      setError("");
 
-        const accessToken = localStorage.getItem('accessToken');
+      const accessToken = localStorage.getItem("accessToken");
 
-        if (!accessToken) {
-          throw new Error('Không tìm thấy phiên đăng nhập.');
-        }
-
-        const data = await getAdminVouchers(
-          accessToken,
-          query,
-          signal,
-        );
-
-        setVouchers(data);
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
-        setError(
-          error instanceof Error
-            ? error.message
-            : 'Không thể tải voucher',
-        );
-      } finally {
-        if (!signal?.aborted) {
-          setLoading(false);
-        }
+      if (!accessToken) {
+        throw new Error("Không tìm thấy phiên đăng nhập.");
       }
-    },
-    [],
-  );
+
+      const data = await getAdminVouchers(accessToken, query, signal);
+
+      setVouchers(data);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+
+      setError(
+        error instanceof Error ? error.message : "Không thể tải voucher",
+      );
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,222 +88,137 @@ export default function AdminVouchersPage() {
     };
   }, [debouncedSearch, loadVouchers]);
 
-  const filteredVouchers =
-  useMemo(() => {
-    const now =
-      new Date().getTime();
+  const filteredVouchers = useMemo(() => {
+    const now = new Date().getTime();
 
-    return vouchers.filter(
-      (voucher) => {
-        const matchesStatus =
-          selectedStatus ===
-            'ALL' ||
-          (selectedStatus ===
-            'ACTIVE' &&
-            voucher.isActive) ||
-          (selectedStatus ===
-            'INACTIVE' &&
-            !voucher.isActive);
+    return vouchers.filter((voucher) => {
+      const matchesStatus =
+        selectedStatus === "ALL" ||
+        (selectedStatus === "ACTIVE" && voucher.isActive) ||
+        (selectedStatus === "INACTIVE" && !voucher.isActive);
 
-        const matchesValidity =
-          voucher.isSystemVoucher
-            ? selectedValidity ===
-                'ALL' ||
-              selectedValidity ===
-                'ACTIVE'
-            : (() => {
-                const startAt =
-                  new Date(
-                    voucher.startAt!,
-                  ).getTime();
+      const matchesValidity = voucher.isSystemVoucher
+        ? selectedValidity === "ALL" || selectedValidity === "ACTIVE"
+        : (() => {
+            const startAt = new Date(voucher.startAt!).getTime();
 
-                const endAt =
-                  new Date(
-                    voucher.endAt!,
-                  ).getTime();
+            const endAt = new Date(voucher.endAt!).getTime();
 
-                return (
-                  selectedValidity ===
-                    'ALL' ||
-                  (selectedValidity ===
-                    'UPCOMING' &&
-                    now <
-                      startAt) ||
-                  (selectedValidity ===
-                    'ACTIVE' &&
-                    now >=
-                      startAt &&
-                    now <=
-                      endAt) ||
-                  (selectedValidity ===
-                    'EXPIRED' &&
-                    now >
-                      endAt)
-                );
-              })();
+            return (
+              selectedValidity === "ALL" ||
+              (selectedValidity === "UPCOMING" && now < startAt) ||
+              (selectedValidity === "ACTIVE" &&
+                now >= startAt &&
+                now <= endAt) ||
+              (selectedValidity === "EXPIRED" && now > endAt)
+            );
+          })();
 
-        return (
-          matchesStatus && matchesValidity
-        );
-      },
-    );
-  }, [
-    vouchers,
-    selectedStatus,
-    selectedValidity,
-  ]);
+      return matchesStatus && matchesValidity;
+    });
+  }, [vouchers, selectedStatus, selectedValidity]);
 
-    function formatCurrency(
-      value:
-        | number
-        | string
-        | null,
-    ) {
-      if (value === null) {
-        return '—';
-      }
-
-      return new Intl.NumberFormat(
-        'vi-VN',
-        {
-          style: 'currency',
-          currency: 'VND',
-        },
-      ).format(Number(value));
+  function formatCurrency(value: number | string | null) {
+    if (value === null) {
+      return "—";
     }
 
-    function formatDate(
-      value: string,
-    ) {
-      return new Intl.DateTimeFormat(
-        'vi-VN',
-        {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        },
-      ).format(new Date(value));
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(Number(value));
+  }
+
+  function formatDate(value: string) {
+    return new Intl.DateTimeFormat("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date(value));
+  }
+
+  function getDiscountLabel(voucher: Voucher) {
+    if (voucher.discountType === "PERCENT") {
+      return `${Number(voucher.discountValue)}%`;
     }
 
-    function getDiscountLabel(
-      voucher: Voucher,
-    ) {
-      if (
-        voucher.discountType ===
-        'PERCENT'
-      ) {
-        return `${Number(
-          voucher.discountValue,
-        )}%`;
-      }
+    return formatCurrency(voucher.discountValue);
+  }
 
-      return formatCurrency(
-        voucher.discountValue,
-      );
-    }
-
-  function getValidity(
-    voucher: Voucher,
-  ) {
+  function getValidity(voucher: Voucher) {
     if (voucher.isSystemVoucher) {
       return {
-        label: 'Đặc quyền Staff',
-        className:
-          'bg-violet-50 text-violet-700',
+        label: "Đặc quyền Staff",
+        className: "bg-violet-50 text-violet-700",
       };
     }
-  
+
     if (!voucher.isActive) {
       return {
-        label: 'Đã khóa',
-        className:
-          'bg-red-50 text-red-600',
+        label: "Đã khóa",
+        className: "bg-red-50 text-red-600",
       };
     }
-  
-    const now =
-      new Date().getTime();
-  
-    const startAt =
-      new Date(
-        voucher.startAt!,
-      ).getTime();
-  
-    const endAt =
-      new Date(
-        voucher.endAt!,
-      ).getTime();
-  
+
+    const now = new Date().getTime();
+
+    const startAt = new Date(voucher.startAt!).getTime();
+
+    const endAt = new Date(voucher.endAt!).getTime();
+
     if (now < startAt) {
       return {
-        label: 'Chưa hiệu lực',
-        className:
-          'bg-blue-50 text-blue-700',
+        label: "Chưa hiệu lực",
+        className: "bg-blue-50 text-blue-700",
       };
     }
-  
+
     if (now > endAt) {
       return {
-        label: 'Hết hạn',
-        className:
-          'bg-red-50 text-red-600',
+        label: "Hết hạn",
+        className: "bg-red-50 text-red-600",
       };
     }
-  
+
     return {
-      label: 'Còn hiệu lực',
-      className:
-        'bg-emerald-50 text-emerald-700',
+      label: "Còn hiệu lực",
+      className: "bg-emerald-50 text-emerald-700",
     };
   }
 
-  async function handleToggleStatus(
-    voucher: Voucher,
-  ) {
+  async function handleToggleStatus(voucher: Voucher) {
     try {
-      setError('');
-      setUpdatingId(
-        voucher.id,
-      );
+      setError("");
+      setUpdatingId(voucher.id);
 
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
+      const accessToken = localStorage.getItem("accessToken");
 
       if (!accessToken) {
-        throw new Error(
-          'Không tìm thấy phiên đăng nhập.',
-        );
+        throw new Error("Không tìm thấy phiên đăng nhập.");
       }
 
-      const updated =
-        await updateVoucherStatus(
-          accessToken,
-          voucher.id,
-          !voucher.isActive,
-        );
+      const updated = await updateVoucherStatus(
+        accessToken,
+        voucher.id,
+        !voucher.isActive,
+      );
 
       // Chỉ cập nhật voucher vừa đổi trạng thái để tránh giật bảng
-      setVouchers(
-        (current) =>
-          current.map(
-            (item) =>
-              item.id ===
-              voucher.id
-                ? {
-                    ...item,
-                    isActive:
-                      updated.isActive,
-                  }
-                : item,
-          ),
+      setVouchers((current) =>
+        current.map((item) =>
+          item.id === voucher.id
+            ? {
+                ...item,
+                isActive: updated.isActive,
+              }
+            : item,
+        ),
       );
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
-          : 'Không thể cập nhật trạng thái voucher',
+          : "Không thể cập nhật trạng thái voucher",
       );
     } finally {
       setUpdatingId(null);
@@ -357,34 +229,27 @@ export default function AdminVouchersPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-3xl font-bold text-[#1F1B18]">
-            Quản lý voucher
-          </h2>
+          <h2 className="text-3xl font-bold text-[#1F1B18]">Quản lý voucher</h2>
 
           <p className="mt-1 text-[#78866B]">
-            Quản lý mã giảm giá
-            và thời gian áp dụng.
+            Quản lý mã giảm giá và thời gian áp dụng.
           </p>
         </div>
 
         <button
-            type="button"
-            onClick={() => {
-                setEditingVoucher(null);
-                setFormOpen(true);
-            }}
-            className="flex w-fit items-center gap-2 rounded-xl bg-[#4A2C20] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#382118]"
-            >
-            <Plus size={18} />
-            Thêm voucher
+          type="button"
+          onClick={() => {
+            setEditingVoucher(null);
+            setFormOpen(true);
+          }}
+          className="flex w-fit items-center gap-2 rounded-xl bg-[#4A2C20] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#382118]"
+        >
+          <Plus size={18} />
+          Thêm voucher
         </button>
       </div>
 
-      {error && (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      <ToastMessage message={error} />
 
       <div className="rounded-2xl border border-[#E9E1D8] bg-white p-4 shadow-sm">
         <div className="grid gap-3 xl:grid-cols-[1fr_210px_210px]">
@@ -396,11 +261,7 @@ export default function AdminVouchersPage() {
 
             <input
               value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value,
-                )
-              }
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Tìm mã voucher..."
               className="h-11 w-full rounded-xl border border-[#E9E1D8] bg-[#FAF8F5] pl-10 pr-4 text-sm outline-none transition focus:border-[#C9894B]"
             />
@@ -408,27 +269,15 @@ export default function AdminVouchersPage() {
 
           <div className="relative">
             <select
-              value={
-                selectedStatus
-              }
-              onChange={(event) =>
-                setSelectedStatus(
-                  event.target.value,
-                )
-              }
+              value={selectedStatus}
+              onChange={(event) => setSelectedStatus(event.target.value)}
               className="h-11 w-full appearance-none rounded-xl border border-[#E9E1D8] bg-white pl-4 pr-10 text-sm outline-none focus:border-[#C9894B]"
             >
-              <option value="ALL">
-                Tất cả trạng thái
-              </option>
+              <option value="ALL">Tất cả trạng thái</option>
 
-              <option value="ACTIVE">
-                Đang bật
-              </option>
+              <option value="ACTIVE">Đang bật</option>
 
-              <option value="INACTIVE">
-                Đã khóa
-              </option>
+              <option value="INACTIVE">Đã khóa</option>
             </select>
 
             <ChevronDown
@@ -439,32 +288,19 @@ export default function AdminVouchersPage() {
 
           <div className="relative">
             <select
-              value={
-                selectedValidity
-              }
+              value={selectedValidity}
               onChange={(event) =>
-                setSelectedValidity(
-                  event.target
-                    .value as ValidityFilter,
-                )
+                setSelectedValidity(event.target.value as ValidityFilter)
               }
               className="h-11 w-full appearance-none rounded-xl border border-[#E9E1D8] bg-white pl-4 pr-10 text-sm outline-none focus:border-[#C9894B]"
             >
-              <option value="ALL">
-                Tất cả hiệu lực
-              </option>
+              <option value="ALL">Tất cả hiệu lực</option>
 
-              <option value="UPCOMING">
-                Chưa hiệu lực
-              </option>
+              <option value="UPCOMING">Chưa hiệu lực</option>
 
-              <option value="ACTIVE">
-                Còn hiệu lực
-              </option>
+              <option value="ACTIVE">Còn hiệu lực</option>
 
-              <option value="EXPIRED">
-                Hết hạn
-              </option>
+              <option value="EXPIRED">Hết hạn</option>
             </select>
 
             <ChevronDown
@@ -477,9 +313,7 @@ export default function AdminVouchersPage() {
 
       <div className="overflow-hidden rounded-2xl border border-[#E9E1D8] bg-white shadow-sm">
         {loading ? (
-          <div className="p-6 text-sm text-[#78866B]">
-            Đang tải voucher...
-          </div>
+          <div className="p-6 text-sm text-[#78866B]">Đang tải voucher...</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full table-fixed">
@@ -495,39 +329,24 @@ export default function AdminVouchersPage() {
 
               <thead className="bg-[#FAF8F5]">
                 <tr className="border-b border-[#E9E1D8] text-left text-xs font-semibold uppercase tracking-wide text-[#78866B]">
-                  <th className="px-5 py-4">
-                    Voucher
-                  </th>
+                  <th className="px-5 py-4">Voucher</th>
 
-                  <th className="px-5 py-4">
-                    Giảm
-                  </th>
+                  <th className="px-5 py-4">Giảm</th>
 
-                  <th className="px-5 py-4">
-                    Điều kiện
-                  </th>
+                  <th className="px-5 py-4">Điều kiện</th>
 
-                  <th className="px-5 py-4">
-                    Lượt dùng
-                  </th>
+                  <th className="px-5 py-4">Lượt dùng</th>
 
-                  <th className="px-5 py-4">
-                    Thời hạn
-                  </th>
+                  <th className="px-5 py-4">Thời hạn</th>
 
-                  <th className="px-5 py-4">
-                    Hiệu lực
-                  </th>
+                  <th className="px-5 py-4">Hiệu lực</th>
 
-                  <th className="px-5 py-4 text-right">
-                    Thao tác
-                  </th>
+                  <th className="px-5 py-4 text-right">Thao tác</th>
                 </tr>
               </thead>
 
               <tbody>
-                {filteredVouchers.length ===
-                0 ? (
+                {filteredVouchers.length === 0 ? (
                   <tr>
                     <td
                       colSpan={7}
@@ -537,175 +356,132 @@ export default function AdminVouchersPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredVouchers.map(
-                    (voucher) => {
-                      const validity =
-                        getValidity(
-                          voucher,
-                        );
+                  filteredVouchers.map((voucher) => {
+                    const validity = getValidity(voucher);
 
-                      return (
-                        <tr
-                          key={
-                            voucher.id
-                          }
-                          className="border-b border-[#F0E8E0] transition-colors last:border-b-0 hover:bg-[#FCFAF7]"
-                        >
-                          <td className="px-5 py-4">
-                            <div className="min-w-0">
-                              <p className="truncate font-bold text-[#4A2C20]">
-                                {
-                                  voucher.code
-                                }
-                              </p>
-
-                              <p className="mt-1 truncate text-xs text-[#8A817B]">
-                                {voucher.description ||
-                                  'Không có mô tả'}
-                              </p>
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span className="font-bold text-[#C9894B]">
-                              {getDiscountLabel(
-                                voucher,
-                              )}
-                            </span>
-
-                            {voucher.discountType ===
-                              'PERCENT' &&
-                              voucher.maxDiscount !==
-                                null && (
-                                <p className="mt-1 text-xs text-[#8A817B]">
-                                  Tối đa{' '}
-                                  {formatCurrency(
-                                    voucher.maxDiscount,
-                                  )}
-                                </p>
-                              )}
-                          </td>
-
-                          <td className="px-5 py-4 text-sm text-[#5E5650]">
-                            {voucher.minOrderValue !==
-                            null
-                              ? `Từ ${formatCurrency(
-                                  voucher.minOrderValue,
-                                )}`
-                              : 'Không yêu cầu'}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <p className="text-sm font-semibold text-[#1F1B18]">
-                              {voucher.usedCount}
-                              {' / '}
-                              {voucher.usageLimit ?? '∞'}
+                    return (
+                      <tr
+                        key={voucher.id}
+                        className="border-b border-[#F0E8E0] transition-colors last:border-b-0 hover:bg-[#FCFAF7]"
+                      >
+                        <td className="px-5 py-4">
+                          <div className="min-w-0">
+                            <p className="truncate font-bold text-[#4A2C20]">
+                              {voucher.code}
                             </p>
-                          </td>
 
-                          <td className="px-5 py-4 text-sm text-[#5E5650]">
-                            {voucher.isSystemVoucher ? (
-                              <span className="font-medium text-[#78866B]">
-                                Không giới hạn
-                              </span>
-                            ) : (
-                              <>
-                                <p>
-                                  {formatDate(
-                                    voucher.startAt!,
-                                  )}
-                                </p>
+                            <p className="mt-1 truncate text-xs text-[#8A817B]">
+                              {voucher.description || "Không có mô tả"}
+                            </p>
+                          </div>
+                        </td>
 
-                                <p className="mt-1 text-xs text-[#8A817B]">
-                                  đến{' '}
-                                  {formatDate(
-                                    voucher.endAt!,
-                                  )}
-                                </p>
-                              </>
+                        <td className="px-5 py-4">
+                          <span className="font-bold text-[#C9894B]">
+                            {getDiscountLabel(voucher)}
+                          </span>
+
+                          {voucher.discountType === "PERCENT" &&
+                            voucher.maxDiscount !== null && (
+                              <p className="mt-1 text-xs text-[#8A817B]">
+                                Tối đa {formatCurrency(voucher.maxDiscount)}
+                              </p>
                             )}
-                          </td>
+                        </td>
 
-                          <td className="px-5 py-4">
-                            {voucher.isSystemVoucher ? (
-                              <span className="inline-flex min-w-[105px] justify-center rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
-                                Đặc quyền Staff
+                        <td className="px-5 py-4 text-sm text-[#5E5650]">
+                          {voucher.minOrderValue !== null
+                            ? `Từ ${formatCurrency(voucher.minOrderValue)}`
+                            : "Không yêu cầu"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <p className="text-sm font-semibold text-[#1F1B18]">
+                            {voucher.usedCount}
+                            {" / "}
+                            {voucher.usageLimit ?? "∞"}
+                          </p>
+                        </td>
+
+                        <td className="px-5 py-4 text-sm text-[#5E5650]">
+                          {voucher.isSystemVoucher ? (
+                            <span className="font-medium text-[#78866B]">
+                              Không giới hạn
+                            </span>
+                          ) : (
+                            <>
+                              <p>{formatDate(voucher.startAt!)}</p>
+
+                              <p className="mt-1 text-xs text-[#8A817B]">
+                                đến {formatDate(voucher.endAt!)}
+                              </p>
+                            </>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {voucher.isSystemVoucher ? (
+                            <span className="inline-flex min-w-[105px] justify-center rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                              Đặc quyền Staff
+                            </span>
+                          ) : (
+                            <span
+                              className={`inline-flex min-w-[105px] justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${validity.className}`}
+                            >
+                              {validity.label}
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {voucher.isSystemVoucher ? (
+                            <div className="flex justify-end">
+                              <span className="rounded-lg bg-[#F7F2EC] px-3 py-2 text-xs font-semibold text-[#78866B]">
+                                Hệ thống
                               </span>
-                            ) : (
-                              <span
-                                className={`inline-flex min-w-[105px] justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${validity.className}`}
+                            </div>
+                          ) : (
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingVoucher(voucher);
+
+                                  setFormOpen(true);
+                                }}
+                                title="Chỉnh sửa"
+                                className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FFF6EC] text-[#C9894B] transition hover:bg-[#FBE8D4] hover:text-[#A9682F]"
                               >
-                                {validity.label}
-                              </span>
-                            )}
-                          </td>
+                                <Pencil size={17} strokeWidth={2.2} />
+                              </button>
 
-                          <td className="px-5 py-4">
-                            {voucher.isSystemVoucher ? (
-                              <div className="flex justify-end">
-                                <span className="rounded-lg bg-[#F7F2EC] px-3 py-2 text-xs font-semibold text-[#78866B]">
-                                  Hệ thống
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingVoucher(
-                                      voucher,
-                                    );
-
-                                    setFormOpen(true);
-                                  }}
-                                  title="Chỉnh sửa"
-                                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FFF6EC] text-[#C9894B] transition hover:bg-[#FBE8D4] hover:text-[#A9682F]"
-                                >
-                                  <Pencil
-                                    size={17}
-                                    strokeWidth={2.2}
-                                  />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  disabled={
-                                    updatingId ===
-                                    voucher.id
-                                  }
-                                  onClick={() =>
-                                    handleToggleStatus(
-                                      voucher,
-                                    )
-                                  }
-                                  title={
-                                    voucher.isActive
-                                      ? 'Khóa voucher'
-                                      : 'Mở lại voucher'
-                                  }
-                                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-wait disabled:opacity-50 ${
-                                    voucher.isActive
-                                      ? 'bg-[#FFF1F1] text-[#C85C5C] hover:bg-[#FFE4E4]'
-                                      : 'bg-[#EAF6EE] text-[#4F8A63] hover:bg-[#DDF0E3]'
-                                  }`}
-                                >
-                                  {voucher.isActive ? (
-                                    <LockKeyhole
-                                      size={17}
-                                    />
-                                  ) : (
-                                    <UnlockKeyhole
-                                      size={17}
-                                    />
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    },
-                  )
+                              <button
+                                type="button"
+                                disabled={updatingId === voucher.id}
+                                onClick={() => handleToggleStatus(voucher)}
+                                title={
+                                  voucher.isActive
+                                    ? "Khóa voucher"
+                                    : "Mở lại voucher"
+                                }
+                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-wait disabled:opacity-50 ${
+                                  voucher.isActive
+                                    ? "bg-[#FFF1F1] text-[#C85C5C] hover:bg-[#FFE4E4]"
+                                    : "bg-[#EAF6EE] text-[#4F8A63] hover:bg-[#DDF0E3]"
+                                }`}
+                              >
+                                {voucher.isActive ? (
+                                  <LockKeyhole size={17} />
+                                ) : (
+                                  <UnlockKeyhole size={17} />
+                                )}
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -715,34 +491,26 @@ export default function AdminVouchersPage() {
 
       {!loading && (
         <p className="text-sm text-[#78866B]">
-          Hiển thị{' '}
+          Hiển thị{" "}
           <span className="font-semibold text-[#1F1B18]">
-            {
-              filteredVouchers.length
-            }
-          </span>{' '}
+            {filteredVouchers.length}
+          </span>{" "}
           / {vouchers.length} voucher
         </p>
       )}
 
-        <VoucherFormModal
-            open={formOpen}
-            mode={
-                editingVoucher
-                ? 'edit'
-                : 'create'
-            }
-            voucher={
-                editingVoucher
-            }
-            onClose={() => {
-                setFormOpen(false);
-                setEditingVoucher(null);
-            }}
-            onSaved={() => {
-              void loadVouchers(debouncedSearch);
-            }}
-        />  
+      <VoucherFormModal
+        open={formOpen}
+        mode={editingVoucher ? "edit" : "create"}
+        voucher={editingVoucher}
+        onClose={() => {
+          setFormOpen(false);
+          setEditingVoucher(null);
+        }}
+        onSaved={() => {
+          void loadVouchers(debouncedSearch);
+        }}
+      />
     </div>
   );
 }

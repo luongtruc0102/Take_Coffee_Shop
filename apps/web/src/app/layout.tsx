@@ -1,13 +1,14 @@
-import type { Metadata } from 'next';
-import 'leaflet/dist/leaflet.css';
-import './globals.css';
+import type { Metadata } from "next";
+import AppToastProvider from "@/components/ui/app-toast-provider";
+import "leaflet/dist/leaflet.css";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: 'KipporaCoffee',
-    template: '%s | Kippora',
+    default: "KipporaCoffee",
+    template: "%s | Kippora",
   },
-  description: 'Kippora Coffee & Tea - Mỗi ngày một vị vui.',
+  description: "Kippora Coffee & Tea - Mỗi ngày một vị vui.",
 };
 
 export default function RootLayout({
@@ -17,7 +18,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body>{children}</body>
+      <body>
+        <AppToastProvider>{children}</AppToastProvider>
+      </body>
     </html>
   );
 }

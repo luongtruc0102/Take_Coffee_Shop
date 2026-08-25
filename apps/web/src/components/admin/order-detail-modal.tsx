@@ -36,6 +36,7 @@ const STATUS_LABELS: Record<
   PENDING: 'Chờ xác nhận',
   CONFIRMED: 'Đã xác nhận',
   PREPARING: 'Đang chuẩn bị',
+  READY_FOR_PICKUP: 'Sẵn sàng nhận',
   DELIVERING: 'Đang giao',
   COMPLETED: 'Hoàn tất',
   CANCELLED: 'Đã hủy',
@@ -89,6 +90,9 @@ function getNextStatuses(
       return fulfillmentMethod === 'PICKUP'
         ? ['COMPLETED']
         : ['DELIVERING'];
+
+    case 'READY_FOR_PICKUP':
+      return ['COMPLETED'];
 
     case 'DELIVERING':
       return ['COMPLETED'];

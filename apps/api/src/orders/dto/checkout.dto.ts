@@ -15,12 +15,26 @@ import {
 
 // Kiểm tra thông tin khi người dùng checkout
 export class CheckoutDto {
-  // Các CartItem khách thực sự chọn để thanh toán
+  // Checkout thường truyền các CartItem khách đã chọn.
+  @IsOptional()
   @IsArray()
   @ArrayNotEmpty()
   @ArrayUnique()
   @IsInt({ each: true })
-  cartItemIds!: number[];
+  cartItemIds?: number[];
+
+  // Mua lại truyền đơn nguồn và OrderItem thay vì tạo CartItem tạm.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  reorderOrderId?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  reorderOrderItemIds?: number[];
 
   @IsString()
   @MinLength(2)

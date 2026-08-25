@@ -11,6 +11,38 @@ import { DeliveryQuoteDto } from './dto/delivery-quote.dto';
 import { VouchersService } from '../vouchers/vouchers.service';
 import { FuzzySearchService } from '../common/fuzzy-search/fuzzy-search.service';
 
+// Cấu trúc chung cho CartItem và OrderItem nguồn sau khi đã nạp dữ liệu hiện tại.
+type CheckoutSourceItem = {
+  id: number;
+  productId: number;
+  variantId: number;
+  quantity: number;
+  product: {
+    id: number;
+    name: string;
+    description: string | null;
+    imageUrl: string | null;
+    isActive: boolean;
+    category: { isActive: boolean };
+  };
+  variant: {
+    id: number;
+    productId: number;
+    size: string;
+    price: number;
+    isActive: boolean;
+  };
+  toppings: Array<{
+    toppingId: number;
+    topping: {
+      id: number;
+      name: string;
+      price: number;
+      isActive: boolean;
+    };
+  }>;
+};
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -18,6 +50,53 @@ export class OrdersService {
     private readonly vouchersService: VouchersService,
     private readonly fuzzySearch: FuzzySearchService,
   ) {}
+
+  // Nội dung tập trung tại backend để chuông, toast và lịch sử luôn đồng nhất.
+  private buildOrderStatusNotification(order: {
+    id: number;
+    status: OrderStatus;
+    fulfillmentMethod: 'DELIVERY' | 'PICKUP';
+  }) {
+    const content: Partial<
+      Record<OrderStatus, { title: string; message: string }>
+    > = {
+      CONFIRMED: {
+        title: 'Đơn hàng đã được xác nhận',
+        message: `Cửa hàng đã xác nhận đơn #${order.id}.`,
+      },
+      PREPARING: {
+        title: 'Cửa hàng đang chuẩn bị món',
+        message: `Đơn #${order.id} đang được pha chế và đóng gói.`,
+      },
+      DELIVERING: {
+        title: 'Đơn hàng đang được giao',
+        message: `Đơn #${order.id} đang trên đường giao đến bạn.`,
+      },
+      COMPLETED: {
+        title: 'Đơn hàng đã hoàn tất',
+        message: `Đơn #${order.id} đã hoàn tất. Cảm ơn bạn đã chọn Kippora!`,
+      },
+      CANCELLED: {
+        title: 'Đơn hàng đã bị hủy',
+        message: `Đơn #${order.id} đã bị hủy. Xem chi tiết để biết thêm thông tin.`,
+      },
+      READY_FOR_PICKUP: {
+        title: 'Đơn hàng đã sẵn sàng nhận',
+        message: `Đơn #${order.id} đã chuẩn bị xong. Bạn có thể đến quán nhận món.`,
+      },
+    };
+
+    const selected = content[order.status];
+    if (!selected) {
+      return null;
+    }
+
+    return {
+      orderId: order.id,
+      type: 'ORDER_STATUS',
+      ...selected,
+    };
+  }
 
   private getStoreCoordinates() {
     const latitude = Number(process.env.STORE_LATITUDE ?? '10.8569371');
@@ -281,28 +360,22 @@ export class OrdersService {
       deliveryLocationQuoteDto.fulfillmentMethod,
     );
   }
-  // Checkout các món được chọn trong giỏ hàng và tạo Order
-  async checkout(userId: number, checkoutDto: CheckoutDto) {
-    // Lấy toàn bộ giỏ hàng để backend tự kiểm tra dữ liệu
-    const cart = await this.prisma.cart.findUnique({
-      where: {
-        userId,
-      },
 
+  /**
+   * Tạo nguồn checkout tạm từ đơn cũ bằng dữ liệu sản phẩm hiện tại.
+   * Hàm chỉ đọc OrderItem, tuyệt đối không tạo hoặc cập nhật CartItem.
+   */
+  private async getReorderCheckoutItems(userId: number, orderId: number) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, userId },
       include: {
         items: {
           include: {
-            product: {
-              include: {
-                category: true,
-              },
-            },
-
+            product: { include: { category: true } },
             variant: true,
-
             toppings: {
               include: {
-                topping: true,
+                topping: { include: { products: true } },
               },
             },
           },
@@ -310,20 +383,174 @@ export class OrdersService {
       },
     });
 
-    if (!cart || cart.items.length === 0) {
-      throw new BadRequestException('Giỏ hàng đang trống');
+    if (!order) {
+      throw new NotFoundException('Không tìm thấy đơn hàng');
     }
 
-    // Chỉ lấy các CartItem mà khách đã chọn
-    const selectedItems = cart.items.filter((item) =>
-      checkoutDto.cartItemIds.includes(item.id),
+    const items: CheckoutSourceItem[] = [];
+    const skippedItems: Array<{
+      orderItemId: number;
+      productName: string;
+      reason: string;
+    }> = [];
+
+    for (const item of order.items) {
+      let reason = '';
+
+      if (!item.product.isActive || !item.product.category.isActive) {
+        reason = 'Sản phẩm hiện không còn khả dụng';
+      } else if (
+        !item.variant.isActive ||
+        item.variant.productId !== item.productId
+      ) {
+        reason = 'Size hiện không còn khả dụng';
+      } else {
+        const invalidTopping = item.toppings.find(
+          (itemTopping) =>
+            !itemTopping.topping.isActive ||
+            !itemTopping.topping.products.some(
+              (productTopping) => productTopping.productId === item.productId,
+            ),
+        );
+
+        if (invalidTopping) {
+          reason = `Topping "${invalidTopping.topping.name}" hiện không còn khả dụng`;
+        }
+      }
+
+      if (reason) {
+        skippedItems.push({
+          orderItemId: item.id,
+          productName: item.productName,
+          reason,
+        });
+        continue;
+      }
+
+      items.push({
+        id: item.id,
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: item.quantity,
+        product: {
+          id: item.product.id,
+          name: item.product.name,
+          description: item.product.description,
+          imageUrl: item.product.imageUrl,
+          isActive: item.product.isActive,
+          category: { isActive: item.product.category.isActive },
+        },
+        variant: {
+          id: item.variant.id,
+          productId: item.variant.productId,
+          size: item.variant.size,
+          price: Number(item.variant.price),
+          isActive: item.variant.isActive,
+        },
+        toppings: item.toppings.map((itemTopping) => ({
+          toppingId: itemTopping.toppingId,
+          topping: {
+            id: itemTopping.topping.id,
+            name: itemTopping.topping.name,
+            price: Number(itemTopping.topping.price),
+            isActive: itemTopping.topping.isActive,
+          },
+        })),
+      });
+    }
+
+    return {
+      order,
+      items,
+      skippedItems,
+    };
+  }
+
+  // Checkout các món được chọn trong giỏ hàng và tạo Order
+  async checkout(userId: number, checkoutDto: CheckoutDto) {
+    const hasCartSource = Boolean(checkoutDto.cartItemIds?.length);
+    const hasReorderSource = Boolean(
+      checkoutDto.reorderOrderId && checkoutDto.reorderOrderItemIds?.length,
     );
 
-    // Không cho gửi CartItem không thuộc giỏ hàng của user hiện tại
-    if (selectedItems.length !== checkoutDto.cartItemIds.length) {
+    // Chỉ chấp nhận đúng một nguồn để không thể trộn CartItem và OrderItem.
+    if (hasCartSource === hasReorderSource) {
       throw new BadRequestException(
-        'Có sản phẩm được chọn không tồn tại trong giỏ hàng',
+        'Vui lòng chọn sản phẩm từ giỏ hàng hoặc từ đơn mua lại',
       );
+    }
+
+    let selectedItems: CheckoutSourceItem[];
+
+    if (hasReorderSource) {
+      const reorderOrderId = checkoutDto.reorderOrderId!;
+      const requestedItemIds = checkoutDto.reorderOrderItemIds!;
+      const reorderSource = await this.getReorderCheckoutItems(
+        userId,
+        reorderOrderId,
+      );
+
+      selectedItems = reorderSource.items.filter((item) =>
+        requestedItemIds.includes(item.id),
+      );
+
+      if (selectedItems.length !== requestedItemIds.length) {
+        const unavailable = reorderSource.skippedItems.find((item) =>
+          requestedItemIds.includes(item.orderItemId),
+        );
+        throw new BadRequestException(
+          unavailable
+            ? `${unavailable.productName}: ${unavailable.reason}`
+            : 'Có món mua lại không thuộc đơn hàng hoặc không còn khả dụng',
+        );
+      }
+    } else {
+      const cartItemIds = checkoutDto.cartItemIds!;
+
+      // Checkout thường vẫn lấy và xác minh CartItem thuộc đúng user.
+      const cart = await this.prisma.cart.findUnique({
+        where: { userId },
+        include: {
+          items: {
+            include: {
+              product: {
+                include: { category: true },
+              },
+              variant: true,
+              toppings: {
+                include: { topping: true },
+              },
+            },
+          },
+        },
+      });
+
+      if (!cart || cart.items.length === 0) {
+        throw new BadRequestException('Giỏ hàng đang trống');
+      }
+
+      selectedItems = cart.items
+        .filter((item) => cartItemIds.includes(item.id))
+        .map((item) => ({
+          ...item,
+          variant: {
+            ...item.variant,
+            price: Number(item.variant.price),
+          },
+          toppings: item.toppings.map((itemTopping) => ({
+            toppingId: itemTopping.toppingId,
+            topping: {
+              ...itemTopping.topping,
+              price: Number(itemTopping.topping.price),
+            },
+          })),
+        }));
+
+      if (selectedItems.length !== cartItemIds.length) {
+        throw new BadRequestException(
+          'Có sản phẩm được chọn không tồn tại trong giỏ hàng',
+        );
+      }
     }
 
     if (selectedItems.length === 0) {
@@ -697,6 +924,7 @@ export class OrdersService {
   private async cancelOrder(
     orderId: number,
     allowedStatuses: OrderStatus[],
+    cancelReason: string,
     userId?: number,
   ) {
     return this.prisma.$transaction(async (tx) => {
@@ -737,6 +965,9 @@ export class OrdersService {
         },
         data: {
           status: 'CANCELLED',
+          // Ghi trạng thái và dấu vết trong cùng transaction để không lệch dữ liệu.
+          cancelReason: cancelReason.trim(),
+          cancelledAt: new Date(),
         },
       });
 
@@ -785,6 +1016,17 @@ export class OrdersService {
           status: 'CANCELLED',
         },
       });
+
+      const notification = this.buildOrderStatusNotification({
+        id: order.id,
+        status: 'CANCELLED',
+        fulfillmentMethod: order.fulfillmentMethod,
+      });
+      if (notification) {
+        await tx.notification.create({
+          data: { ...notification, userId: order.userId },
+        });
+      }
 
       const cancelledOrder = await tx.order.findUnique({
         where: { id: orderId },
@@ -854,8 +1096,60 @@ export class OrdersService {
   }
 
   // User chỉ được tự hủy đơn đang chờ xác nhận của chính mình
-  async cancelMyOrder(userId: number, orderId: number) {
-    return this.cancelOrder(orderId, ['PENDING'], userId);
+  async cancelMyOrder(userId: number, orderId: number, reason: string) {
+    return this.cancelOrder(orderId, ['PENDING'], reason, userId);
+  }
+
+  /**
+   * Dựng preview từ OrderItem và giá hiện tại. Đây là thao tác chỉ đọc nên
+   * giỏ hàng của user giữ nguyên trước, trong và sau khi mua lại.
+   */
+  async reorderMyOrder(userId: number, orderId: number) {
+    const source = await this.getReorderCheckoutItems(userId, orderId);
+    const previewItems = source.items.map((item) => {
+      const unitPrice =
+        Number(item.variant.price) +
+        item.toppings.reduce(
+          (total, itemTopping) => total + Number(itemTopping.topping.price),
+          0,
+        );
+
+      return {
+        ...item,
+        cartId: 0,
+        toppings: item.toppings.map((itemTopping) => ({
+          ...itemTopping,
+          cartItemId: item.id,
+        })),
+        unitPrice,
+        lineTotal: unitPrice * item.quantity,
+        createdAt: source.order.createdAt,
+        updatedAt: source.order.updatedAt,
+      };
+    });
+    const totalPrice = previewItems.reduce(
+      (total, item) => total + item.lineTotal,
+      0,
+    );
+
+    return {
+      sourceOrderId: orderId,
+      // Giữ shape Cart để checkout tái sử dụng giao diện; đây không phải bản ghi DB.
+      cart: {
+        id: 0,
+        userId,
+        items: previewItems,
+        totalPrice,
+        createdAt: source.order.createdAt,
+        updatedAt: source.order.updatedAt,
+      },
+      selectedCartItemIds: previewItems.map((item) => item.id),
+      addedItemCount: previewItems.reduce(
+        (total, item) => total + item.quantity,
+        0,
+      ),
+      skippedItems: source.skippedItems,
+    };
   }
 
   // =========================
@@ -977,12 +1271,33 @@ export class OrdersService {
     }
 
     // Kiểm soát thứ tự xử lý đơn hàng
-    const allowedTransitions: Record<string, string[]> = {
-      PENDING: ['CONFIRMED', 'CANCELLED'],
-      CONFIRMED: ['PREPARING', 'CANCELLED'],
+    // Luồng nhận tại quán và giao hàng được tách riêng.
+    // Đơn PICKUP phải qua READY_FOR_PICKUP trước khi hoàn tất.
+    const allowedTransitions:
+    Record<string, string[]> = {
+      PENDING: [
+        'CONFIRMED',
+        'CANCELLED',
+      ],
+
+      CONFIRMED: [
+        'PREPARING',
+        'CANCELLED',
+      ],
+
       PREPARING:
-        order.fulfillmentMethod === 'PICKUP' ? ['COMPLETED'] : ['DELIVERING'],
-      DELIVERING: ['COMPLETED'],
+        order.fulfillmentMethod ===
+        'PICKUP'
+          ? ['READY_FOR_PICKUP']
+          : ['DELIVERING'],
+
+      READY_FOR_PICKUP: [
+        'COMPLETED',
+      ],
+
+      DELIVERING: [
+        'COMPLETED',
+      ],
     };
 
     const allowedStatuses = allowedTransitions[order.status] ?? [];
@@ -994,18 +1309,33 @@ export class OrdersService {
     }
 
     if (status === 'CANCELLED') {
-      return this.cancelOrder(id, ['PENDING', 'CONFIRMED']);
+      return this.cancelOrder(
+        id,
+        ['PENDING', 'CONFIRMED'],
+        'Cửa hàng hủy đơn hàng',
+      );
     }
 
     // Khi đơn chưa hoàn tất thì chỉ cập nhật trạng thái
     if (status !== 'COMPLETED') {
-      return this.prisma.order.update({
-        where: {
-          id,
-        },
-        data: {
-          status: status as OrderStatus,
-        },
+      return this.prisma.$transaction(async (tx) => {
+        const updatedOrder = await tx.order.update({
+          where: { id },
+          data: { status: status as OrderStatus },
+        });
+        const notification = this.buildOrderStatusNotification({
+          id: updatedOrder.id,
+          status: updatedOrder.status,
+          fulfillmentMethod: updatedOrder.fulfillmentMethod,
+        });
+
+        if (notification) {
+          await tx.notification.create({
+            data: { ...notification, userId: updatedOrder.userId },
+          });
+        }
+
+        return updatedOrder;
       });
     }
 
@@ -1077,6 +1407,17 @@ export class OrdersService {
           paidAt: completedAt,
         },
       });
+
+      const notification = this.buildOrderStatusNotification({
+        id: updatedOrder.id,
+        status: updatedOrder.status,
+        fulfillmentMethod: updatedOrder.fulfillmentMethod,
+      });
+      if (notification) {
+        await tx.notification.create({
+          data: { ...notification, userId: updatedOrder.userId },
+        });
+      }
 
       const completedOrder = await tx.order.findUnique({
         where: { id: updatedOrder.id },

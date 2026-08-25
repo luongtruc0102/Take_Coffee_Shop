@@ -18,6 +18,9 @@ import { VouchersModule } from './vouchers/vouchers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { AddressesModule } from './addresses/addresses.module';
 
 @Module({
   imports: [
@@ -65,6 +68,15 @@ import { UploadsModule } from './uploads/uploads.module';
 
     // Module uploads hình ảnh
     UploadsModule,
+
+    // Chuông thông báo và trạng thái đã đọc của user
+    NotificationsModule,
+
+    // Đánh giá đơn hàng và từng món sau khi đơn hoàn tất
+    ReviewsModule,
+
+    // Sổ địa chỉ giao hàng của khách hàng.
+    AddressesModule,
   ],
 
   providers: [

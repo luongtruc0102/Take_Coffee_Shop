@@ -106,7 +106,8 @@ export default function DeliveryRouteMap({
   }, [customerPosition, routePositions, storePosition]);
 
   return (
-    <div className="relative h-72 w-full">
+    // Cô lập z-index của các pane Leaflet để chúng không nổi lên trên header fixed.
+    <div className="relative isolate z-0 h-72 w-full">
       <MapContainer
         center={storePosition}
         zoom={15}

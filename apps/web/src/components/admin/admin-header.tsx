@@ -40,38 +40,50 @@ export default function AdminHeader({
   );
 
   useEffect(() => {
-    const storedUser =
-      localStorage.getItem(
-        'user',
-      );
+    let cancelled = false;
 
-    if (!storedUser) {
-      return;
-    }
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
 
-    try {
-      const parsedUser: CurrentUser =
-        JSON.parse(
-          storedUser,
+      const storedUser =
+        localStorage.getItem(
+          'user',
         );
 
-      setUser(
-        parsedUser,
-      );
-    } catch {
-      // Xóa phiên nếu localStorage không hợp lệ
-      localStorage.removeItem(
-        'user',
-      );
+      if (!storedUser) {
+        return;
+      }
 
-      localStorage.removeItem(
-        'accessToken',
-      );
+      try {
+        const parsedUser: CurrentUser =
+          JSON.parse(
+            storedUser,
+          );
 
-      router.replace(
-        '/login',
-      );
-    }
+        setUser(
+          parsedUser,
+        );
+      } catch {
+        // Xóa phiên nếu localStorage không hợp lệ
+        localStorage.removeItem(
+          'user',
+        );
+
+        localStorage.removeItem(
+          'accessToken',
+        );
+
+        router.replace(
+          '/login',
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   function handleLogout() {

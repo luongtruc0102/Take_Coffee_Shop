@@ -23,6 +23,7 @@
       | 'PENDING'
       | 'CONFIRMED'
       | 'PREPARING'
+      | 'READY_FOR_PICKUP'
       | 'DELIVERING'
       | 'COMPLETED'
       | 'CANCELLED';
@@ -45,6 +46,7 @@
       | 'PENDING'
       | 'CONFIRMED'
       | 'PREPARING'
+      | 'READY_FOR_PICKUP'
       | 'DELIVERING'
       | 'COMPLETED'
       | 'CANCELLED';

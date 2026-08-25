@@ -1,107 +1,66 @@
-'use client';
+"use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import {
-  ChevronDown,
-  Eye,
-  Search,
-} from 'lucide-react';
+import { ChevronDown, Eye, Search } from "lucide-react";
 
-import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
-import OrderDetailModal from '@/components/admin/order-detail-modal';
+import OrderDetailModal from "@/components/admin/order-detail-modal";
+import ToastMessage from "@/components/ui/toast-message";
 
-import {
-  getAdminOrders,
-  updateOrderStatus,
-} from '@/services/order.service';
+import { getAdminOrders, updateOrderStatus } from "@/services/order.service";
 
-import type {
-  Order,
-  OrderStatus,
-} from '@/types/order';
+import type { Order, OrderStatus } from "@/types/order";
 
 export default function AdminOrdersPage() {
-  const [orders, setOrders] =
-    useState<Order[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [error, setError] =
-    useState('');
+  const [error, setError] = useState("");
 
-  const [search, setSearch] =
-    useState('');
+  const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
 
+  const [selectedStatus, setSelectedStatus] = useState("ALL");
 
-  const [
-    selectedStatus,
-    setSelectedStatus,
-  ] = useState('ALL');
+  const [selectedPaymentStatus, setSelectedPaymentStatus] = useState("ALL");
 
-  const [
-    selectedPaymentStatus,
-    setSelectedPaymentStatus,
-  ] = useState('ALL');
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  const [
-    selectedOrder,
-    setSelectedOrder,
-  ] = useState<Order | null>(
-    null,
-  );
+  const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
 
-  const [
-    updatingOrderId,
-    setUpdatingOrderId,
-  ] = useState<number | null>(
-    null,
-  );
+  const loadOrders = useCallback(async (query = "", signal?: AbortSignal) => {
+    await Promise.resolve();
 
+    try {
+      setLoading(true);
+      setError("");
 
-  const loadOrders = useCallback(
-    async (query = '', signal?: AbortSignal) => {
-      await Promise.resolve();
+      const accessToken = localStorage.getItem("accessToken");
 
-      try {
-        setLoading(true);
-        setError('');
-
-        const accessToken = localStorage.getItem('accessToken');
-
-        if (!accessToken) {
-          throw new Error('Không tìm thấy phiên đăng nhập.');
-        }
-
-        const data = await getAdminOrders(accessToken, query, signal);
-
-        setOrders(data);
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
-        setError(
-          error instanceof Error
-            ? error.message
-            : 'Không thể tải đơn hàng',
-        );
-      } finally {
-        if (!signal?.aborted) {
-          setLoading(false);
-        }
+      if (!accessToken) {
+        throw new Error("Không tìm thấy phiên đăng nhập.");
       }
-    },
-    [],
-  );
+
+      const data = await getAdminOrders(accessToken, query, signal);
+
+      setOrders(data);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+
+      setError(
+        error instanceof Error ? error.message : "Không thể tải đơn hàng",
+      );
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -116,32 +75,19 @@ export default function AdminOrdersPage() {
     };
   }, [debouncedSearch, loadOrders]);
 
-  async function handleUpdateStatus(
-    order: Order,
-    status: OrderStatus,
-  ) {
+  async function handleUpdateStatus(order: Order, status: OrderStatus) {
     try {
-      setError('');
+      setError("");
       setUpdatingOrderId(order.id);
-  
-      const accessToken =
-        localStorage.getItem(
-          'accessToken',
-        );
-  
+
+      const accessToken = localStorage.getItem("accessToken");
+
       if (!accessToken) {
-        throw new Error(
-          'Không tìm thấy phiên đăng nhập.',
-        );
+        throw new Error("Không tìm thấy phiên đăng nhập.");
       }
-  
-      const updated =
-        await updateOrderStatus(
-          accessToken,
-          order.id,
-          status,
-        );
-  
+
+      const updated = await updateOrderStatus(accessToken, order.id, status);
+
       // Không reload toàn bảng để tránh giật UI
       setOrders((current) =>
         current.map((item) =>
@@ -153,196 +99,157 @@ export default function AdminOrdersPage() {
             : item,
         ),
       );
-      
-      setSelectedOrder(
-        (current) =>
-          current?.id === order.id
-            ? {
-                ...current,
-                ...updated,
-              }
-            : current,
+
+      setSelectedOrder((current) =>
+        current?.id === order.id
+          ? {
+              ...current,
+              ...updated,
+            }
+          : current,
       );
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
-          : 'Không thể cập nhật trạng thái đơn hàng',
+          : "Không thể cập nhật trạng thái đơn hàng",
       );
     } finally {
       setUpdatingOrderId(null);
     }
   }
 
-  const filteredOrders =
-    useMemo(() => {
-      return orders.filter(
-        (order) => {
-          const matchesStatus =
-            selectedStatus ===
-              'ALL' ||
-            order.status ===
-              selectedStatus;
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const matchesStatus =
+        selectedStatus === "ALL" || order.status === selectedStatus;
 
-          const matchesPayment =
-            selectedPaymentStatus ===
-              'ALL' ||
-            order.payment?.status ===
-              selectedPaymentStatus;
+      const matchesPayment =
+        selectedPaymentStatus === "ALL" ||
+        order.payment?.status === selectedPaymentStatus;
 
-          return (
-            matchesStatus &&
-            matchesPayment
-          );
-        },
-      );
-    }, [
-      orders,
-      selectedStatus,
-      selectedPaymentStatus,
-    ]);
+      return matchesStatus && matchesPayment;
+    });
+  }, [orders, selectedStatus, selectedPaymentStatus]);
 
-  function formatCurrency(
-    value: number | string,
-  ) {
-    return new Intl.NumberFormat(
-      'vi-VN',
-      {
-        style: 'currency',
-        currency: 'VND',
-      },
-    ).format(Number(value));
+  function formatCurrency(value: number | string) {
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(Number(value));
   }
 
-  function formatDate(
-    value: string,
-  ) {
-    return new Intl.DateTimeFormat(
-      'vi-VN',
-      {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      },
-    ).format(new Date(value));
+  function formatDate(value: string) {
+    return new Intl.DateTimeFormat("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
   }
 
-  function getStatusLabel(
-    status: Order['status'],
-  ) {
+  function getStatusLabel(status: Order["status"]) {
     switch (status) {
-      case 'PENDING':
-        return 'Chờ xác nhận';
+      case "PENDING":
+        return "Chờ xác nhận";
 
-      case 'CONFIRMED':
-        return 'Đã xác nhận';
+      case "CONFIRMED":
+        return "Đã xác nhận";
 
-      case 'PREPARING':
-        return 'Đang chuẩn bị';
+      case "PREPARING":
+        return "Đang chuẩn bị";
 
-      case 'DELIVERING':
-        return 'Đang giao';
+      case "READY_FOR_PICKUP":
+        return "Sẵn sàng nhận";
 
-      case 'COMPLETED':
-        return 'Hoàn tất';
+      case "DELIVERING":
+        return "Đang giao";
 
-      case 'CANCELLED':
-        return 'Đã hủy';
+      case "COMPLETED":
+        return "Hoàn tất";
+
+      case "CANCELLED":
+        return "Đã hủy";
     }
   }
 
-  function getStatusClass(
-    status: Order['status'],
-  ) {
+  function getStatusClass(status: Order["status"]) {
     switch (status) {
-      case 'PENDING':
-        return 'bg-amber-50 text-amber-700';
+      case "PENDING":
+        return "bg-amber-50 text-amber-700";
 
-      case 'CONFIRMED':
-        return 'bg-blue-50 text-blue-700';
+      case "CONFIRMED":
+        return "bg-blue-50 text-blue-700";
 
-      case 'PREPARING':
-        return 'bg-orange-50 text-orange-700';
+      case "PREPARING":
+        return "bg-orange-50 text-orange-700";
 
-      case 'DELIVERING':
-        return 'bg-violet-50 text-violet-700';
+      case "READY_FOR_PICKUP":
+        return "bg-teal-50 text-teal-700";
 
-      case 'COMPLETED':
-        return 'bg-emerald-50 text-emerald-700';
+      case "DELIVERING":
+        return "bg-violet-50 text-violet-700";
 
-      case 'CANCELLED':
-        return 'bg-red-50 text-red-600';
+      case "COMPLETED":
+        return "bg-emerald-50 text-emerald-700";
+
+      case "CANCELLED":
+        return "bg-red-50 text-red-600";
     }
   }
 
-  function getPaymentLabel(
-    order: Order,
-  ) {
+  function getPaymentLabel(order: Order) {
     if (!order.payment) {
-      return 'Chưa thanh toán';
+      return "Chưa thanh toán";
     }
 
-    switch (
-      order.payment.status
-    ) {
-      case 'PENDING':
-        return 'Chờ thanh toán';
+    switch (order.payment.status) {
+      case "PENDING":
+        return "Chờ thanh toán";
 
-      case 'PAID':
-        return 'Đã thanh toán';
+      case "PAID":
+        return "Đã thanh toán";
 
-      case 'FAILED':
-        return 'Thất bại';
+      case "FAILED":
+        return "Thất bại";
 
-      case 'CANCELLED':
-        return 'Đã hủy';
+      case "CANCELLED":
+        return "Đã hủy";
     }
   }
 
-  function getPaymentClass(
-    order: Order,
-  ) {
+  function getPaymentClass(order: Order) {
     if (!order.payment) {
-      return 'bg-[#F3F0ED] text-[#78866B]';
+      return "bg-[#F3F0ED] text-[#78866B]";
     }
 
-    switch (
-      order.payment.status
-    ) {
-      case 'PENDING':
-        return 'bg-amber-50 text-amber-700';
+    switch (order.payment.status) {
+      case "PENDING":
+        return "bg-amber-50 text-amber-700";
 
-      case 'PAID':
-        return 'bg-emerald-50 text-emerald-700';
+      case "PAID":
+        return "bg-emerald-50 text-emerald-700";
 
-      case 'FAILED':
-        return 'bg-red-50 text-red-600';
+      case "FAILED":
+        return "bg-red-50 text-red-600";
 
-      case 'CANCELLED':
-        return 'bg-[#F3F0ED] text-[#78866B]';
+      case "CANCELLED":
+        return "bg-[#F3F0ED] text-[#78866B]";
     }
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold text-[#1F1B18]">
-          Quản lý đơn hàng
-        </h2>
+        <h2 className="text-3xl font-bold text-[#1F1B18]">Quản lý đơn hàng</h2>
 
         <p className="mt-1 text-[#78866B]">
-          Theo dõi và xử lý đơn hàng
-          của khách hàng.
+          Theo dõi và xử lý đơn hàng của khách hàng.
         </p>
       </div>
 
-      {error && (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      <ToastMessage message={error} />
 
       <div className="rounded-2xl border border-[#E9E1D8] bg-white p-4 shadow-sm">
         <div className="grid gap-3 xl:grid-cols-[1fr_220px_220px]">
@@ -354,12 +261,8 @@ export default function AdminOrdersPage() {
 
             <input
               value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value,
-                )
-              }
-              placeholder="Tìm theo mã đơn, tên người nhận hoặc SĐT..."              
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm theo mã đơn, tên người nhận hoặc SĐT..."
               className="h-11 w-full rounded-xl border border-[#E9E1D8] bg-[#FAF8F5] pl-10 pr-4 text-sm outline-none transition focus:border-[#C9894B]"
             />
           </div>
@@ -367,40 +270,24 @@ export default function AdminOrdersPage() {
           <div className="relative">
             <select
               value={selectedStatus}
-              onChange={(event) =>
-                setSelectedStatus(
-                  event.target.value,
-                )
-              }
+              onChange={(event) => setSelectedStatus(event.target.value)}
               className="h-11 w-full appearance-none rounded-xl border border-[#E9E1D8] bg-white pl-4 pr-10 text-sm outline-none focus:border-[#C9894B]"
             >
-              <option value="ALL">
-                Tất cả trạng thái
-              </option>
+              <option value="ALL">Tất cả trạng thái</option>
 
-              <option value="PENDING">
-                Chờ xác nhận
-              </option>
+              <option value="PENDING">Chờ xác nhận</option>
 
-              <option value="CONFIRMED">
-                Đã xác nhận
-              </option>
+              <option value="CONFIRMED">Đã xác nhận</option>
 
-              <option value="PREPARING">
-                Đang chuẩn bị
-              </option>
+              <option value="PREPARING">Đang chuẩn bị</option>
 
-              <option value="DELIVERING">
-                Đang giao
-              </option>
+              <option value="READY_FOR_PICKUP">Sẵn sàng nhận</option>
 
-              <option value="COMPLETED">
-                Hoàn tất
-              </option>
+              <option value="DELIVERING">Đang giao</option>
 
-              <option value="CANCELLED">
-                Đã hủy
-              </option>
+              <option value="COMPLETED">Hoàn tất</option>
+
+              <option value="CANCELLED">Đã hủy</option>
             </select>
 
             <ChevronDown
@@ -411,35 +298,19 @@ export default function AdminOrdersPage() {
 
           <div className="relative">
             <select
-              value={
-                selectedPaymentStatus
-              }
-              onChange={(event) =>
-                setSelectedPaymentStatus(
-                  event.target.value,
-                )
-              }
+              value={selectedPaymentStatus}
+              onChange={(event) => setSelectedPaymentStatus(event.target.value)}
               className="h-11 w-full appearance-none rounded-xl border border-[#E9E1D8] bg-white pl-4 pr-10 text-sm outline-none focus:border-[#C9894B]"
             >
-              <option value="ALL">
-                Tất cả thanh toán
-              </option>
+              <option value="ALL">Tất cả thanh toán</option>
 
-              <option value="PENDING">
-                Chờ thanh toán
-              </option>
+              <option value="PENDING">Chờ thanh toán</option>
 
-              <option value="PAID">
-                Đã thanh toán
-              </option>
+              <option value="PAID">Đã thanh toán</option>
 
-              <option value="FAILED">
-                Thất bại
-              </option>
+              <option value="FAILED">Thất bại</option>
 
-              <option value="CANCELLED">
-                Đã hủy
-              </option>
+              <option value="CANCELLED">Đã hủy</option>
             </select>
 
             <ChevronDown
@@ -452,17 +323,15 @@ export default function AdminOrdersPage() {
 
       <div className="overflow-hidden rounded-2xl border border-[#E9E1D8] bg-white shadow-sm">
         {loading ? (
-          <div className="p-6 text-sm text-[#78866B]">
-            Đang tải đơn hàng...
-          </div>
+          <div className="p-6 text-sm text-[#78866B]">Đang tải đơn hàng...</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full table-fixed">
               <colgroup>
-                <col className="w-[9%]" />
+                <col className="w-[8%]" />
                 <col className="w-[20%]" />
                 <col className="w-[13%]" />
-                <col className="w-[13%]" />
+                <col className="w-[14%]" />
                 <col className="w-[15%]" />
                 <col className="w-[15%]" />
                 <col className="w-[15%]" />
@@ -470,39 +339,24 @@ export default function AdminOrdersPage() {
 
               <thead className="bg-[#FAF8F5]">
                 <tr className="border-b border-[#E9E1D8] text-left text-xs font-semibold uppercase tracking-wide text-[#78866B]">
-                  <th className="px-5 py-4">
-                    Mã đơn
-                  </th>
+                  <th className="px-5 py-4">Mã đơn</th>
 
-                  <th className="px-5 py-4">
-                    Khách hàng
-                  </th>
+                  <th className="px-5 py-4">Khách hàng</th>
 
-                  <th className="px-5 py-4">
-                    Tổng tiền
-                  </th>
+                  <th className="px-5 py-4">Tổng tiền</th>
 
-                  <th className="px-5 py-4">
-                    Thanh toán
-                  </th>
+                  <th className="px-5 py-4">Thanh toán</th>
 
-                  <th className="px-5 py-4">
-                    Trạng thái
-                  </th>
+                  <th className="px-5 py-4">Trạng thái</th>
 
-                  <th className="px-5 py-4">
-                    Thời gian
-                  </th>
+                  <th className="px-5 py-4">Thời gian</th>
 
-                  <th className="px-5 py-4 text-right">
-                    Thao tác
-                  </th>
+                  <th className="px-5 py-4 text-right">Thao tác</th>
                 </tr>
               </thead>
 
               <tbody>
-                {filteredOrders.length ===
-                0 ? (
+                {filteredOrders.length === 0 ? (
                   <tr>
                     <td
                       colSpan={7}
@@ -512,99 +366,76 @@ export default function AdminOrdersPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredOrders.map(
-                    (order) => (
-                      <tr
-                        key={order.id}
-                        className="border-b border-[#F0E8E0] transition-colors last:border-b-0 hover:bg-[#FCFAF7]"
-                      >
-                        <td className="px-5 py-4">
-                          <span className="font-semibold text-[#4A2C20]">
-                            #{order.id}
-                          </span>
-                        </td>
+                  filteredOrders.map((order) => (
+                    <tr
+                      key={order.id}
+                      className="border-b border-[#F0E8E0] transition-colors last:border-b-0 hover:bg-[#FCFAF7]"
+                    >
+                      <td className="px-5 py-4">
+                        <span className="font-semibold text-[#4A2C20]">
+                          #{order.id}
+                        </span>
+                      </td>
 
-                        <td className="px-5 py-4">
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-[#1F1B18]">
-                              {
-                                order.receiverName
-                              }
-                            </p>
+                      <td className="px-5 py-4">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-[#1F1B18]">
+                            {order.receiverName}
+                          </p>
 
-                            <p className="mt-1 truncate text-xs text-[#8A817B]">
-                              {
-                                order.receiverPhone
-                              }
-                            </p>
-                            <p className="mt-1 text-xs font-semibold text-[#C9894B]">
-                              {order.fulfillmentMethod === 'PICKUP'
-                                ? 'Đến quán lấy'
-                                : 'Giao hàng'}
-                            </p>
-                          </div>
-                        </td>
+                          <p className="mt-1 truncate text-xs text-[#8A817B]">
+                            {order.receiverPhone}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold text-[#C9894B]">
+                            {order.fulfillmentMethod === "PICKUP"
+                              ? "Đến quán lấy"
+                              : "Giao hàng"}
+                          </p>
+                        </div>
+                      </td>
 
-                        <td className="px-5 py-4 font-semibold text-[#4A2C20]">
-                          {formatCurrency(
-                            order.totalPrice,
-                          )}
-                        </td>
+                      <td className="px-5 py-4 font-semibold text-[#4A2C20]">
+                        {formatCurrency(order.totalPrice)}
+                      </td>
 
-                        <td className="px-5 py-4">
-                          <span
-                            className={`inline-flex min-w-[110px] justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${getPaymentClass(
-                              order,
-                            )}`}
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex min-w-[110px] justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${getPaymentClass(
+                            order,
+                          )}`}
+                        >
+                          {getPaymentLabel(order)}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex min-w-[105px] justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClass(
+                            order.status,
+                          )}`}
+                        >
+                          {getStatusLabel(order.status)}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-[#5E5650]">
+                        {formatDate(order.createdAt)}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOrder(order)}
+                            title="Xem chi tiết"
+                            className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#F7F2EC] text-[#5F7254] transition hover:bg-[#EAF3E7] hover:text-[#3F5D38]"
                           >
-                            {getPaymentLabel(
-                              order,
-                            )}
-                          </span>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <span
-                            className={`inline-flex min-w-[105px] justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClass(
-                              order.status,
-                            )}`}
-                          >
-                            {getStatusLabel(
-                              order.status,
-                            )}
-                          </span>
-                        </td>
-
-                        <td className="px-5 py-4 text-sm text-[#5E5650]">
-                          {formatDate(
-                            order.createdAt,
-                          )}
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedOrder(
-                                  order,
-                                )
-                              }
-                              title="Xem chi tiết"
-                              className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#F7F2EC] text-[#5F7254] transition hover:bg-[#EAF3E7] hover:text-[#3F5D38]"
-                            >
-                              <Eye
-                                size={17}
-                                strokeWidth={
-                                  2.2
-                                }
-                              />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ),
-                  )
+                            <Eye size={17} strokeWidth={2.2} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -614,31 +445,21 @@ export default function AdminOrdersPage() {
 
       {!loading && (
         <p className="text-sm text-[#78866B]">
-          Hiển thị{' '}
+          Hiển thị{" "}
           <span className="font-semibold text-[#1F1B18]">
-            {
-              filteredOrders.length
-            }
-          </span>{' '}
+            {filteredOrders.length}
+          </span>{" "}
           / {orders.length} đơn hàng
         </p>
       )}
 
-        <OrderDetailModal
-        open={
-            selectedOrder !== null
-        }
+      <OrderDetailModal
+        open={selectedOrder !== null}
         order={selectedOrder}
-        updating={
-            updatingOrderId !== null
-        }
-        onClose={() =>
-            setSelectedOrder(null)
-        }
-        onUpdateStatus={
-            handleUpdateStatus
-        }
-        />
+        updating={updatingOrderId !== null}
+        onClose={() => setSelectedOrder(null)}
+        onUpdateStatus={handleUpdateStatus}
+      />
     </div>
   );
 }

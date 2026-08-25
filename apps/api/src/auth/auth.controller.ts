@@ -2,9 +2,9 @@ import {
   Body,
   Controller,
   Get,
+  Patch,
   Post,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
@@ -12,6 +12,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'; // Guard kiểm tra Access Token của người dùng
 import { Public } from '../common/decorators/public.decorator';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 // Request sau khi JwtAuthGuard xác thực sẽ có thông tin user
 interface AuthenticatedRequest extends Request {
@@ -44,5 +45,20 @@ export class AuthController {
   @Get('me')
   getProfile(@Req() request: AuthenticatedRequest) {
     return this.authService.getProfile(request.user.sub);
+  }
+
+  // PATCH /auth/me - user cập nhật hồ sơ của chính mình.
+  @Patch('me')
+  updateProfile(
+    @Req()
+    request: AuthenticatedRequest,
+
+    @Body()
+    dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(
+      request.user.sub,
+      dto,
+    );
   }
 }
